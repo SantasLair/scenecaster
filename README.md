@@ -1,28 +1,22 @@
-# ⚡ Phaser Forge Editor
+# ⚡ Scenecaster
 
 > Stop guessing coordinates. Just drag it.
 
-A visual scene editor for **Phaser 4** games, built with Electron + React. Drag sprites into position, tweak properties in the inspector, and read the values directly into your game code — no more trial-and-error reloading.
+A lightweight visual scene editor for **Phaser 4** games, built with Electron + React. It sits beside your project instead of inside it: drag sprites into position, tweak properties in the inspector, and save the layout as a plain JSON file that you, or an AI assistant writing your code, can read. Design mode needs no changes to your game.
+
+*Scenecaster started as a fork of [Phaser Forge Editor](https://github.com/XLevi9/Phaser-Forge-Editor).*
 
 ![Status](https://img.shields.io/badge/status-early%20development-orange)
 ![Phaser](https://img.shields.io/badge/Phaser-4.x-blue)
 ![Electron](https://img.shields.io/badge/Electron-latest-teal)
 
-![Phaser Forge Editor: design mode, then live mode inspecting and editing a running Phaser game](docs/images/hero.gif)
+![Scenecaster: design mode, then live mode inspecting and editing a running Phaser game](docs/images/hero.gif)
 
 ---
 
 ## Why
 
-Developing with Phaser 4 means writing coordinates blind:
-
-```ts
-this.add.sprite(340, 127, 'player').setScale(0.8).setRotation(0.3)
-```
-
-Then reload. Wrong. Change 340 to 360. Reload. Still wrong. Repeat 20 times.
-
-Phaser Forge lets you drag that sprite to where it looks right, see the numbers update live, and move on.
+Placing things in a Phaser game by typing coordinates and reloading is slow. Scenecaster lets you drag them into place instead. The layout is saved as a JSON file, and your code, or the AI writing it, reads the positions from there.
 
 ---
 
@@ -41,7 +35,7 @@ Phaser Forge lets you drag that sprite to where it looks right, see the numbers 
 - **Snap to grid** — toggleable 32px snap
 - **Save / load** — layout stored in `forge-scene.json` in your project (Ctrl+S)
 - **Per-project config** — canvas size and dev script saved to `.phaser-forge.json`
-- **Live mode** — run your game's dev server from the editor, inspect and move objects of the running game through a small bridge script
+- **Live mode (optional)** — run your game's dev server from the editor, inspect and move objects of the running game through a small bridge script. This is the only feature that adds a file to your project; everything else works without it
 
 ---
 
@@ -62,7 +56,7 @@ Your game code:
 
 Design mode needs no changes to your game project.
 
-**Live mode** — press **▶ Run Game** and the editor runs your project's dev script (`dev`, `dev:*` or `*:dev:*` from `package.json`), then loads the game from its localhost URL. To inspect it, click **Install Bridge**: it copies `phaser-forge-bridge.js` (plus a `.d.ts` for TypeScript) to your project root and prints the exact import line for your entry file. Add it **once** — not in every scene — and pass your game instance:
+**Live mode (optional)** — press **▶ Run Game** and the editor runs your project's dev script (`dev`, `dev:*` or `*:dev:*` from `package.json`), then loads the game from its localhost URL. Running the game changes nothing in your project. To inspect and edit it, you also install the bridge, which does modify your project: click **Install Bridge** and it copies `phaser-forge-bridge.js` (plus a `.d.ts` for TypeScript) to your project root and prints the exact import line for your entry file. Add it **once** — not in every scene — and pass your game instance:
 
 ```js
 // src/main.js (entry from index.html)
@@ -94,8 +88,8 @@ If you can't pass the game, `import '../phaser-forge-bridge.js'` alone also work
 ### Install & Run
 
 ```bash
-git clone https://github.com/XLevi9/Phaser-Forge-Editor.git
-cd Phaser-Forge-Editor
+git clone https://github.com/SantasLair/scenecaster.git
+cd scenecaster
 npm install
 npm run dev
 ```
@@ -143,7 +137,7 @@ npm run dev
 
 ## Roadmap
 
-See [docs/ROADMAP.md](docs/ROADMAP.md). Next up: scene switching from the editor, code generation, and multi-select.
+See [docs/ROADMAP-LITE.md](docs/ROADMAP-LITE.md). Next up: a more reliable scene file (multiple scenes, reload when it changes on disk) and importing assets into your project from the editor. The earlier [docs/ROADMAP.md](docs/ROADMAP.md) is the original plan this one replaces.
 
 ---
 
