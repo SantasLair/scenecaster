@@ -4,10 +4,13 @@ import type { ObjectProps, LiveProp } from './props';
 export type { ObjectProps, LiveProp };
 
 export type ToolMode = 'select' | 'move' | 'rotate' | 'scale';
+/** Where an object's x/y are measured from: a point on the canvas; x/y are then an offset from it. null = absolute (top-left). */
+export type Anchor = 'top-left' | 'top' | 'top-right' | 'left' | 'center' | 'right' | 'bottom-left' | 'bottom' | 'bottom-right';
+export const ANCHORS: Anchor[] = ['top-left', 'top', 'top-right', 'left', 'center', 'right', 'bottom-left', 'bottom', 'bottom-right'];
 export type Shape = 'rect' | 'circle' | 'triangle';
 
 /** An object as stored in a scene file.  is a path relative to the project folder, forward slashes. */
-export type SceneObjectMeta = { id: string; name: string; parentId: string | null } & (
+export type SceneObjectMeta = { id: string; name: string; anchor: Anchor | null; interactive: boolean } & (
   | { kind: 'primitive'; shape: Shape }
   | { kind: 'sprite'; asset: string }
 );
