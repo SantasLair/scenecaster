@@ -40,10 +40,5 @@
       <path d="M116 112 L108 88 H64 L52 116 L106 144 L94 174 H48 L40 152" stroke="url(#s)"/>
       <path d="M226 90 H172 L148 114 V150 L172 174 H226" stroke="url(#c)"/>
     </g>
-    <!-- selection handles -->
-    <g fill="#fff" stroke="none">
-      <rect x="222" y="85.5" width="9" height="9"/>
-      <rect x="222" y="169.5" width="9" height="9"/>
-    </g>
   </g>
 </svg>
