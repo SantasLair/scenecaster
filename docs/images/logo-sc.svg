@@ -22,26 +22,28 @@
     <pattern id="grid" width="16" height="16" patternUnits="userSpaceOnUse">
       <path d="M16 0H0V16" fill="none" stroke="#8b7bff" stroke-opacity=".12" stroke-width="1"/>
     </pattern>
-    <clipPath id="tile"><rect width="256" height="256" rx="56"/></clipPath>
+    <clipPath id="tile"><polygon points="28,0 228,0 256,28 256,228 228,256 28,256 0,228 0,28"/></clipPath>
   </defs>
   <g clip-path="url(#tile)">
     <rect width="256" height="256" fill="url(#bg)"/>
     <rect width="256" height="256" fill="url(#grid)"/>
   </g>
-  <rect x="1.5" y="1.5" width="253" height="253" rx="54.5" fill="none" stroke="url(#frame)" stroke-opacity=".35" stroke-width="3"/>
-  <!-- glow layer -->
-  <g fill="none" stroke-width="24" stroke-linecap="round" opacity=".55" filter="url(#glow)">
-    <path d="M97 94 A24 24 0 1 0 76 127 A24 24 0 1 1 55 160" stroke="url(#s)"/>
-    <path d="M202 100 A44 44 0 1 0 202 156" stroke="url(#c)"/>
-  </g>
-  <!-- S and C -->
-  <g fill="none" stroke-width="20" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M97 94 A24 24 0 1 0 76 127 A24 24 0 1 1 55 160" stroke="url(#s)"/>
-    <path d="M202 100 A44 44 0 1 0 202 156" stroke="url(#c)"/>
-  </g>
-  <!-- selection handles on the C: the "scene" cue -->
-  <g fill="#fff">
-    <rect x="197.5" y="95.5" width="9" height="9" rx="2"/>
-    <rect x="197.5" y="151.5" width="9" height="9" rx="2"/>
+  <polygon points="29,2 227,2 254,29 254,227 227,254 29,254 2,227 2,29" fill="none" stroke="url(#frame)" stroke-opacity=".4" stroke-width="3"/>
+  <g transform="translate(-6 0)" fill="none" stroke-linecap="butt" stroke-linejoin="miter" stroke-miterlimit="10">
+    <!-- glow -->
+    <g stroke-width="24" opacity=".55" filter="url(#glow)">
+      <path d="M106 90 H68 L54 104 V118 L68 132 H92 L106 146 V160 L92 174 H54" stroke="url(#s)"/>
+      <path d="M214 90 H160 L136 114 V150 L160 174 H214" stroke="url(#c)"/>
+    </g>
+    <!-- S and C -->
+    <g stroke-width="20">
+      <path d="M106 90 H68 L54 104 V118 L68 132 H92 L106 146 V160 L92 174 H54" stroke="url(#s)"/>
+      <path d="M214 90 H160 L136 114 V150 L160 174 H214" stroke="url(#c)"/>
+    </g>
+    <!-- selection handles -->
+    <g fill="#fff" stroke="none">
+      <rect x="210" y="84" width="9" height="9"/>
+      <rect x="210" y="171" width="9" height="9"/>
+    </g>
   </g>
 </svg>
