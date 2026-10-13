@@ -2,7 +2,7 @@ import * as Phaser from 'phaser';
 import { PROP_KEYS, describe, type ObjectProps } from '../../shared/props';
 import {
   isMessage, unhandled,
-  type EditorToViewport, type ViewportToEditor, type SceneObject, type SceneObjectMeta, type Shape, type ToolMode,
+  type EditorToViewport, type ViewportToEditor, type LoadSceneObject, type Shape, type ToolMode,
 } from '../../shared/protocol';
 
 const params = new URLSearchParams(window.location.search);
@@ -16,16 +16,11 @@ const GRID = 32;
 const PRIMITIVE_SZ = 64;
 
 type Sprite = Phaser.GameObjects.Sprite;
-type SpriteData = SceneObjectMeta;
-
-const SHAPE_NAMES: Record<Shape, string> = { rect: 'Rectangle', circle: 'Circle', triangle: 'Triangle' };
-const SHAPE_TYPES: Record<Shape, string> = { rect: 'Rect', circle: 'Circle', triangle: 'Triangle' };
 
 const post = (msg: ViewportToEditor) => window.parent.postMessage(msg, '*');
 
 class EditorScene extends Phaser.Scene {
   private sprites = new Map<string, Sprite>();
-  private spriteData = new Map<string, SpriteData>();
 
   private selectedSprite: Sprite | null = null;
   private selectedId: string | null = null;
@@ -205,69 +200,24 @@ class EditorScene extends Phaser.Scene {
         if (this.selectedSprite === s) this.deselect();
         s.destroy();
         this.sprites.delete(m.id);
-        this.spriteData.delete(m.id);
         break;
       }
 
-      case 'DUPLICATE_OBJECT': {
-        const src = this.sprites.get(m.id);
-        const data = this.spriteData.get(m.id);
-        if (!src || !data) break;
-        const copy = this.add.sprite(src.x + 20, src.y + 20, src.texture.key);
-        this.applyProps(copy, { ...this.serialize(src), x: copy.x, y: copy.y });
-        const type = data.kind === 'primitive' ? SHAPE_TYPES[data.shape] : 'Sprite';
-        this.addObject(m.newId, copy, { ...data, name: `${data.name} Copy` }, type, true);
-        break;
-      }
-
-      case 'RENAME_OBJECT': {
-        const d = this.spriteData.get(m.id);
-        if (d) d.name = m.name;
-        break;
-      }
-
-      case 'GET_SCENE_STATE': {
-        const objects: SceneObject[] = [...this.sprites].map(([id, spr]) => ({ id, ...this.spriteData.get(id)!, ...this.serialize(spr) }));
-        post({ type: 'SCENE_STATE', objects });
-        break;
-      }
-
-      case 'LOAD_SCENE':
+      case 'LOAD_SCENE': {
+        const selected = this.selectedId;
         this.clearScene();
-        for (const obj of m.objects) {
-          if (obj.kind === 'primitive') {
-            const data: SpriteData = { kind: 'primitive', name: obj.name, shape: obj.shape };
-            const spr = this.add.sprite(obj.x, obj.y, this.primitiveTexture(obj.shape));
-            this.applyProps(spr, obj);
-            this.addObject(obj.id, spr, data, SHAPE_TYPES[obj.shape] ?? 'Rect', false, true);
-          } else if (obj.kind === 'sprite') {
-            const data: SpriteData = { kind: 'sprite', name: obj.name, assetName: obj.assetName, assetFullPath: obj.assetFullPath };
-            this.withAssetTexture(obj.assetName, obj.dataUrl, key => {
-              const spr = this.add.sprite(obj.x, obj.y, key);
-              this.applyProps(spr, obj);
-              this.addObject(obj.id, spr, data, 'Sprite', false, true);
-            });
-          }
-        }
-        break;
-
-      case 'ADD_PRIMITIVE': {
-        const { shape } = m;
-        const spr = this.add.sprite(CANVAS_W / 2, CANVAS_H / 2, this.primitiveTexture(shape));
-        this.addObject(`${shape}_${Date.now()}`, spr, { kind: 'primitive', shape, name: SHAPE_NAMES[shape] }, SHAPE_TYPES[shape], true);
+        for (const obj of m.objects) this.createObject(obj, obj.id === selected);
         break;
       }
 
-      // screenX/screenY are iframe pixels; without them the sprite goes to the canvas center.
-      case 'ADD_SPRITE_FROM_ASSET': {
-        const { file, screenX, screenY } = m;
-        const { x, y } = screenX === undefined || screenY === undefined
-          ? { x: CANVAS_W / 2, y: CANVAS_H / 2 }
-          : this.cameras.main.getWorldPoint(this.scale.transformX(screenX), this.scale.transformY(screenY));
-        this.withAssetTexture(file.name, file.dataUrl, key => {
-          const data: SpriteData = { kind: 'sprite', name: file.name, assetName: file.name, assetFullPath: file.fullPath ?? '' };
-          this.addObject(`${file.name}_${Date.now()}`, this.add.sprite(Math.round(x), Math.round(y), key), data, 'Sprite', true);
-        });
+      case 'ADD_OBJECT':
+        this.createObject(m.object, m.select);
+        break;
+
+      // screenX/screenY are iframe pixels; the editor decides what to add at the scene position.
+      case 'LOCATE_DROP': {
+        const { x, y } = this.cameras.main.getWorldPoint(this.scale.transformX(m.screenX), this.scale.transformY(m.screenY));
+        post({ type: 'DROP_LOCATED', file: m.file, x: Math.round(x), y: Math.round(y) });
         break;
       }
 
@@ -275,19 +225,22 @@ class EditorScene extends Phaser.Scene {
     }
   }
 
-  private addObject(id: string, spr: Sprite, data: SpriteData, objType: string, select: boolean, loaded = false) {
-    spr.setInteractive({ draggable: true });
-    this.sprites.set(id, spr);
-    this.spriteData.set(id, data);
-    post({ type: 'OBJECT_ADDED', id, name: data.name, objType, visible: spr.visible, loaded });
-    if (select) this.selectSprite(id, spr);
+  private createObject(obj: LoadSceneObject, select: boolean) {
+    const add = (texture: string) => {
+      const spr = this.add.sprite(obj.x, obj.y, texture);
+      this.applyProps(spr, obj);
+      spr.setInteractive({ draggable: true });
+      this.sprites.set(obj.id, spr);
+      if (select) this.selectSprite(obj.id, spr);
+    };
+    if (obj.kind === 'primitive') add(this.primitiveTexture(obj.shape));
+    else this.withAssetTexture(obj.asset, obj.dataUrl, add);
   }
 
   private clearScene() {
     this.deselect();
     for (const spr of this.sprites.values()) spr.destroy();
     this.sprites.clear();
-    this.spriteData.clear();
   }
 
   private primitiveTexture(shape: Shape) {

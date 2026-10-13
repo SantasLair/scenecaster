@@ -5,6 +5,7 @@ import { useEditorStore } from './store';
 import HierarchyPanel from './components/HierarchyPanel';
 import AssetBrowser from './components/AssetBrowser';
 import Inspector from './components/Inspector';
+import ProblemsPanel from './components/ProblemsPanel';
 import { ToolBtn, SetupDialog } from './components/Controls';
 import { beginDrag, clamp } from './beginDrag';
 import { LIVE_MODE } from './live/config';
@@ -39,14 +40,14 @@ export default function App() {
   const live = useLiveBridge({ liveUrl, iframeRef, projectFolder, appendLog: dev.appendLog, showConsole });
   const send: (msg: EditorToViewport) => void = live.postToIframe;
   const scene = useScene({
-    iframeRef, send, projectFolder, devScript: dev.selectedScript,
+    iframeRef, send, projectFolder, devScript: dev.selectedScript, canvasSize,
     ensureConfigPersisted: project.ensureConfigPersisted,
     appendLog: dev.appendLog, showConsole,
     readOnly: !!liveUrl,
     onForgeMessage: m => { if (LIVE_MODE) live.onBridgeMessage(m); },
   });
   const {
-    hierarchy, toolMode, saveStatus, setTool, toggleSnap, undo, redo, updateField, selectObject,
+    hierarchy, toolMode, saveStatus, problems, addPrimitive, dropAsset, setTool, toggleSnap, undo, redo, updateField, selectObject,
     deleteObject, duplicateObject, renameObject, toggleVisible, toggleLocked, handleSave,
   } = scene;
 
@@ -82,12 +83,12 @@ export default function App() {
   const handleDropOnViewport = (e: React.DragEvent) => {
     const file = readDroppedAsset(e);
     const rect = iframeRef.current?.getBoundingClientRect();
-    if (file && rect) send({ type: 'ADD_SPRITE_FROM_ASSET', file, screenX: e.clientX - rect.left, screenY: e.clientY - rect.top });
+    if (file && rect) dropAsset(file, e.clientX - rect.left, e.clientY - rect.top);
   };
 
   const handleDropOnHierarchy = (e: React.DragEvent) => {
     const file = readDroppedAsset(e);
-    if (file) send({ type: 'ADD_SPRITE_FROM_ASSET', file });
+    if (file) dropAsset(file);
   };
 
   const startSideResize = (e: React.MouseEvent, side: 'hierarchy' | 'inspector') => {
@@ -206,7 +207,7 @@ export default function App() {
               items={hierarchy} selectedId={selectedId}
               onSelect={selectObject} onDelete={deleteObject}
               onDuplicate={duplicateObject} onRename={renameObject}
-              onAddPrimitive={shape => send({ type: 'ADD_PRIMITIVE', shape })}
+              onAddPrimitive={addPrimitive}
               onToggleVisible={toggleVisible}
               onToggleLocked={toggleLocked}
             />
@@ -222,6 +223,8 @@ export default function App() {
 
         <main className="flex-1 bg-[#1e1e1e] relative overflow-hidden">
           <iframe ref={iframeRef} src={iframeSrc} className="w-full h-full border-none" title="Phaser Viewport" />
+
+          {!liveUrl && <ProblemsPanel problems={problems} />}
 
           {isDraggingAsset && (
             <div className="absolute inset-0 z-10 cursor-copy" onDragOver={e => e.preventDefault()} onDrop={handleDropOnViewport}>

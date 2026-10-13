@@ -75,11 +75,11 @@ function readJson(file: string) {
 }
 
 /** Atomic write: temp file + rename, keeping the previous good file as <file>.bak. Never leaves a half-written file. */
-function writeJson(file: string, data: unknown): { ok: boolean; error?: string } {
+function writeText(file: string, text: string): { ok: boolean; error?: string } {
   const tmp = `${file}.tmp`;
   try {
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
+    fs.writeFileSync(tmp, text);
     if (fs.existsSync(file)) fs.copyFileSync(file, `${file}.bak`);
     fs.renameSync(tmp, file);
     return { ok: true };
@@ -88,6 +88,8 @@ function writeJson(file: string, data: unknown): { ok: boolean; error?: string }
     return { ok: false, error: (e as Error).message };
   }
 }
+
+const writeJson = (file: string, data: unknown) => writeText(file, JSON.stringify(data, null, 2));
 
 // `npm run` goes through a shell, so killing the child alone would orphan the dev server.
 function stopDevServer() {
@@ -296,14 +298,19 @@ app.whenReady().then(() => {
   const sceneFile = (folder: unknown, name: unknown) =>
     typeof name === 'string' && SCENE_NAME_RE.test(name) ? projectFile(folder, SCENES_DIR, name + SCENE_EXT) : null;
 
-  ipcMain.handle('scene:save', (_e, folder: unknown, name: unknown, objects: unknown) => {
+  // The renderer formats the scene (stable key order, one object per line); main only validates that it is JSON and writes atomically.
+  ipcMain.handle('scene:save', (_e, folder: unknown, name: unknown, text: unknown) => {
     const file = sceneFile(folder, name);
-    if (!file || !Array.isArray(objects)) return { ok: false, error: 'Invalid scene name or folder.' };
-    return writeJson(file, { version: 1, key: name, objects });
+    if (!file || typeof text !== 'string') return { ok: false, error: 'Invalid scene name or folder.' };
+    try { JSON.parse(text); } catch { return { ok: false, error: 'Scene text is not valid JSON.' }; }
+    return writeText(file, text);
   });
   ipcMain.handle('scene:load', (_e, folder: unknown, name: unknown) => {
     const file = sceneFile(folder, name);
-    return file ? readJson(file) : null;
+    if (!file) return { ok: false, error: 'Invalid scene name or folder.' };
+    if (!fs.existsSync(file)) return { ok: true, found: false };
+    try { return { ok: true, found: true, data: JSON.parse(fs.readFileSync(file, 'utf-8')) }; }
+    catch (e) { return { ok: false, error: `Cannot read scene file: ${(e as Error).message}` }; }
   });
 
   // project.json holds game settings; the renderer sees the flat ProjectConfig shape.
