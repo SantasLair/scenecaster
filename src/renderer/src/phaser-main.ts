@@ -341,10 +341,10 @@ class EditorScene extends Phaser.Scene {
 
   private drawCanvasFrame() {
     this.add.graphics().setDepth(-2)
-      .fillStyle(0x060810, 1)
+      .fillStyle(0x07061a, 1)
       .fillRect(-4000, -4000, 8000 + CANVAS_W, 8000 + CANVAS_H);
     this.add.graphics().setDepth(-1)
-      .fillStyle(0x111827, 1)
+      .fillStyle(0x120c2e, 1)
       .fillRect(0, 0, CANVAS_W, CANVAS_H);
 
     const border = this.add.graphics().setDepth(0);
