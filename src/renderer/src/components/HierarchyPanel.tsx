@@ -43,12 +43,14 @@ export default function HierarchyPanel({
   const [renameVal, setRenameVal] = useState('');
   const menuRef = useRef<HTMLDivElement>(null);
   const addBtnRef = useRef<HTMLButtonElement>(null);
+  const addMenuRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const close = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenu(null);
-      if (addBtnRef.current && !addBtnRef.current.contains(e.target as Node)) setShowAdd(false);
+      const t = e.target as Node;
+      if (!addBtnRef.current?.contains(t) && !addMenuRef.current?.contains(t)) setShowAdd(false);
     };
     document.addEventListener('mousedown', close);
     return () => document.removeEventListener('mousedown', close);
@@ -113,7 +115,7 @@ export default function HierarchyPanel({
 
         {/* Fixed dropdown — escapes all overflow clipping */}
         {showAdd && addMenuRect && (
-          <div style={{
+          <div ref={addMenuRef} style={{
             position: 'fixed',
             left: addMenuRect.left,
             top: addMenuRect.bottom + 4,
