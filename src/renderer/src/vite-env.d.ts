@@ -35,6 +35,8 @@ interface ElectronAPI {
   writeProjectConfig: (folder: string, cfg: ProjectConfig) => Promise<IpcResult>;
   readProjectScripts: (folder: string) => Promise<string[]>;
   saveScene: (folder: string, name: string, text: string) => Promise<IpcResult>;
+  watchScene: (folder: string, name: string) => Promise<void>;
+  onSceneChanged: (cb: () => void) => () => void;
   loadScene: (folder: string, name: string) => Promise<LoadedScene>;
   startDevServer: (folder: string, script?: string) => Promise<IpcResult & { url?: string }>;
   stopDevServer: () => Promise<IpcResult>;

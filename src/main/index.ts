@@ -62,6 +62,27 @@ const guardFile = (folder: unknown, name: string) => {
   return dir ? guardPath(path.join(dir, name)) : null;
 };
 
+/** Polling watcher for the open scene file. Polling (not fs.watch) because editors and git replace files, which fs.watch handles badly. */
+const SCENE_POLL_MS = 1000;
+let sceneWatch: { file: string; sig: string; timer: NodeJS.Timeout } | null = null;
+const fileSig = (file: string) => {
+  try { const s = fs.statSync(file); return `${s.mtimeMs}:${s.size}`; } catch { return 'missing'; }
+};
+function stopSceneWatch() {
+  if (sceneWatch) clearInterval(sceneWatch.timer);
+  sceneWatch = null;
+}
+function startSceneWatch(file: string) {
+  stopSceneWatch();
+  const watch = { file, sig: fileSig(file), timer: setInterval(() => {
+    const sig = fileSig(file);
+    if (sig === watch.sig) return;
+    watch.sig = sig;
+    if (sig !== 'missing') sendToRenderer('scene:changed');
+  }, SCENE_POLL_MS) };
+  sceneWatch = watch;
+}
+
 const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
 const toPosix = (p: string) => p.replace(/\\/g, '/');
 const sendToRenderer = (channel: string, ...args: unknown[]) => mainWin?.webContents.send(channel, ...args);
@@ -303,7 +324,14 @@ app.whenReady().then(() => {
     const file = sceneFile(folder, name);
     if (!file || typeof text !== 'string') return { ok: false, error: 'Invalid scene name or folder.' };
     try { JSON.parse(text); } catch { return { ok: false, error: 'Scene text is not valid JSON.' }; }
-    return writeText(file, text);
+    const r = writeText(file, text);
+    // Our own write must not look like an external change.
+    if (r.ok && sceneWatch?.file === file) sceneWatch.sig = fileSig(file);
+    return r;
+  });
+  ipcMain.handle('scene:watch', (_e, folder: unknown, name: unknown) => {
+    const file = sceneFile(folder, name);
+    if (file) startSceneWatch(file); else stopSceneWatch();
   });
   ipcMain.handle('scene:load', (_e, folder: unknown, name: unknown) => {
     const file = sceneFile(folder, name);
@@ -342,7 +370,7 @@ app.whenReady().then(() => {
   });
 });
 
-app.on('before-quit', stopDevServer);
+app.on('before-quit', () => { stopSceneWatch(); stopDevServer(); });
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();

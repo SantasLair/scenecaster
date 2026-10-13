@@ -218,6 +218,25 @@ export function useScene({
     await model.loadDoc(doc, found);
   };
 
+  /** The file changed on disk (the AI, git, an editor): reload it, asking first if there are unsaved edits. */
+  const reloadFromDisk = useLatest(async () => {
+    if (!projectFolder || readOnly) return;
+    const { rev: r, savedRev: s } = useSceneModel.getState();
+    if (r !== s && !window.confirm(`${DEFAULT_SCENE}.scene.json changed on disk, but the open scene has unsaved edits. Reload from disk and discard them?`)) {
+      return appendLog('\n[Scene file changed on disk; kept your unsaved edits. Saving will overwrite the external change.]\n');
+    }
+    gestureRef.current = null;
+    history.clear();
+    useEditorStore.getState().setSelectedObject(null);
+    await loadScene(projectFolder);
+  });
+
+  useEffect(() => {
+    if (!projectFolder) return;
+    api.watchScene(projectFolder, DEFAULT_SCENE);
+    return api.onSceneChanged(() => { void reloadFromDisk.current(); });
+  }, [projectFolder, reloadFromDisk]);
+
   /** Clears the scene for a newly opened project. Without `resetViewport` the iframe reloads and its SCENE_READY triggers the load. */
   const beginProject = (folder: string, resetViewport: boolean) => {
     model.resetDoc(DEFAULT_SCENE);

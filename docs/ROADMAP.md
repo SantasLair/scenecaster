@@ -79,7 +79,7 @@ Effort: **S** (under a day) · **M** (a few days) · **L** (a week or more).
   - scene flow: which scene starts or launches which
   - assets folder and dev script (replaces most of `.phaser-forge.json`)
 - [ ] **M** **Project overview panel:** shows `project.json`; editing a setting writes it back. Before a project is adopted it shows detected values instead (scan of `new Phaser.Game({...})`, `super('key')`, `scene: [...]`, `scene.start/launch('key')`), marked "detected, not saved".
-- [ ] **S** **Watch scene files and reload on external change** (AI or git). If the scene is dirty, prompt instead of overwriting.
+- [x] **S** **Watch scene files and reload on external change** (AI or git). If the scene is dirty, prompt instead of overwriting.
 - [x] **S** Dirty tracking; save failure never clears dirty; atomic write (temp file + rename); `.bak` of last good file. Run never saves implicitly: it prompts when the scene is dirty.
 - [x] **S** Validate on load: missing assets, duplicate names/ids, unknown kinds. Report in the UI.
 - [ ] **M** **Scene list** = scene registry (or, before adoption, the scanned scenes) joined with `scenecaster/scenes/*.scene.json`. Each scene shows a state: *layout + code*, *code only* (greyed, no canvas; Boot, Preload, Audio...), or *layout only* (warning: no scene with that key). "Create layout" on a code-only scene; rename/delete apply to layout files only and warn if a code scene still uses the key. One layout per scene key.

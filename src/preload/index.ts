@@ -15,6 +15,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Scene
   saveScene: (folder: string, name: string, text: string) => ipcRenderer.invoke('scene:save', folder, name, text),
+  watchScene: (folder: string, name: string) => ipcRenderer.invoke('scene:watch', folder, name),
+  /** Fires when the scene file was changed by something other than this editor. Returns an unsubscribe function. */
+  onSceneChanged: (cb: () => void) => {
+    const listener = () => cb();
+    ipcRenderer.on('scene:changed', listener);
+    return () => { ipcRenderer.removeListener('scene:changed', listener); };
+  },
   loadScene: (folder: string, name: string) => ipcRenderer.invoke('scene:load', folder, name),
 
   // Dev server
