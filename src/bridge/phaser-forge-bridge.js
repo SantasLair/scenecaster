@@ -4,6 +4,7 @@
 //   installForgeBridge(game);
 // A bare `import './phaser-forge-bridge.js'` also works if the game is on window.game or window.__phaserGame.
 // It does nothing unless the game runs inside the editor's iframe.
+// Editor maintainers: message types are mirrored in src/shared/protocol.ts; keep both in sync by hand.
 
 const VERSION = '0.3';
 const IN_EDITOR = typeof window !== 'undefined' && window.parent !== window;

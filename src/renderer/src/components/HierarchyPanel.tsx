@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import type { Shape } from '../../../shared/protocol';
 
 export interface HierarchyItem {
   id: string;
@@ -23,10 +24,10 @@ interface Props {
   onRename: (id: string, newName: string) => void;
   onToggleVisible: (id: string) => void;
   onToggleLocked: (id: string) => void;
-  onAddPrimitive: (shape: 'rect' | 'circle' | 'triangle') => void;
+  onAddPrimitive: (shape: Shape) => void;
 }
 
-const PRIMITIVES: { shape: 'rect' | 'circle' | 'triangle'; icon: string; label: string }[] = [
+const PRIMITIVES: { shape: Shape; icon: string; label: string }[] = [
   { shape: 'rect',     icon: '⬜', label: 'Rectangle' },
   { shape: 'circle',   icon: '⭕', label: 'Circle'    },
   { shape: 'triangle', icon: '△',  label: 'Triangle'  },
@@ -72,7 +73,7 @@ export default function HierarchyPanel({
     setRenamingId(null);
   };
 
-  const addPrimitive = (shape: 'rect' | 'circle' | 'triangle') => {
+  const addPrimitive = (shape: Shape) => {
     onAddPrimitive(shape);
     setShowAdd(false);
     setMenu(null);

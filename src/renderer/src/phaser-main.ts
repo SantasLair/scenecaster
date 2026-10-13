@@ -1,4 +1,9 @@
 import * as Phaser from 'phaser';
+import { PROP_KEYS, describe, type ObjectProps } from '../../shared/props';
+import {
+  isMessage, unhandled,
+  type EditorToViewport, type ViewportToEditor, type SceneObject, type SceneObjectMeta, type Shape, type ToolMode,
+} from '../../shared/protocol';
 
 const params = new URLSearchParams(window.location.search);
 const CANVAS_W = parseInt(params.get('w') ?? '1280');
@@ -10,15 +15,13 @@ const HANDLE_SZ = 14;
 const GRID = 32;
 const PRIMITIVE_SZ = 64;
 
-type Shape = 'rect' | 'circle' | 'triangle';
 type Sprite = Phaser.GameObjects.Sprite;
-interface SpriteData { kind: 'sprite' | 'primitive'; name: string; shape?: Shape; assetName?: string; assetFullPath?: string }
+type SpriteData = SceneObjectMeta;
 
 const SHAPE_NAMES: Record<Shape, string> = { rect: 'Rectangle', circle: 'Circle', triangle: 'Triangle' };
 const SHAPE_TYPES: Record<Shape, string> = { rect: 'Rect', circle: 'Circle', triangle: 'Triangle' };
 
-const post = (msg: object) => window.parent.postMessage(msg, '*');
-const hexTint = (spr: Sprite) => '#' + (spr.tintTopLeft || 0xffffff).toString(16).padStart(6, '0');
+const post = (msg: ViewportToEditor) => window.parent.postMessage(msg, '*');
 
 class EditorScene extends Phaser.Scene {
   private sprites = new Map<string, Sprite>();
@@ -38,7 +41,7 @@ class EditorScene extends Phaser.Scene {
   private hSY!: Phaser.GameObjects.Rectangle;
   private handleStart = { hx: 0, hy: 0, x: 0, y: 0, scaleX: 1, scaleY: 1 };
 
-  private toolMode = 'select';
+  private toolMode: ToolMode = 'select';
   private snapOn = false;
   private lockedIds = new Set<string>();
 
@@ -169,8 +172,9 @@ class EditorScene extends Phaser.Scene {
     else this.drawMoveGizmo(s, this.bounds);
   }
 
-  private onMessage(m: any) {
-    if (!m?.type) return;
+  private onMessage(data: unknown) {
+    if (!isMessage(data)) return;
+    const m = data as unknown as EditorToViewport;
     switch (m.type) {
       case 'SET_TOOL_MODE': this.toolMode = m.mode; break;
       case 'SET_SNAP': this.snapOn = m.enabled; break;
@@ -211,7 +215,7 @@ class EditorScene extends Phaser.Scene {
         if (!src || !data) break;
         const copy = this.add.sprite(src.x + 20, src.y + 20, src.texture.key);
         this.applyProps(copy, { ...this.serialize(src), x: copy.x, y: copy.y });
-        const type = data.shape ? SHAPE_TYPES[data.shape] : 'Sprite';
+        const type = data.kind === 'primitive' ? SHAPE_TYPES[data.shape] : 'Sprite';
         this.addObject(m.newId, copy, { ...data, name: `${data.name} Copy` }, type, true);
         break;
       }
@@ -223,23 +227,21 @@ class EditorScene extends Phaser.Scene {
       }
 
       case 'GET_SCENE_STATE': {
-        const objects = [...this.sprites].map(([id, spr]) => {
-          const d = this.spriteData.get(id)!;
-          return { id, name: d.name, kind: d.kind, shape: d.shape, assetName: d.assetName, assetFullPath: d.assetFullPath, ...this.serialize(spr) };
-        });
+        const objects: SceneObject[] = [...this.sprites].map(([id, spr]) => ({ id, ...this.spriteData.get(id)!, ...this.serialize(spr) }));
         post({ type: 'SCENE_STATE', objects });
         break;
       }
 
       case 'LOAD_SCENE':
         this.clearScene();
-        for (const obj of m.objects as any[]) {
-          const data: SpriteData = { kind: obj.kind, name: obj.name, shape: obj.shape, assetName: obj.assetName, assetFullPath: obj.assetFullPath };
+        for (const obj of m.objects) {
           if (obj.kind === 'primitive') {
+            const data: SpriteData = { kind: 'primitive', name: obj.name, shape: obj.shape };
             const spr = this.add.sprite(obj.x, obj.y, this.primitiveTexture(obj.shape));
             this.applyProps(spr, obj);
-            this.addObject(obj.id, spr, data, SHAPE_TYPES[obj.shape as Shape] ?? 'Rect', false, true);
+            this.addObject(obj.id, spr, data, SHAPE_TYPES[obj.shape] ?? 'Rect', false, true);
           } else if (obj.kind === 'sprite') {
+            const data: SpriteData = { kind: 'sprite', name: obj.name, assetName: obj.assetName, assetFullPath: obj.assetFullPath };
             this.withAssetTexture(obj.assetName, obj.dataUrl, key => {
               const spr = this.add.sprite(obj.x, obj.y, key);
               this.applyProps(spr, obj);
@@ -250,7 +252,7 @@ class EditorScene extends Phaser.Scene {
         break;
 
       case 'ADD_PRIMITIVE': {
-        const shape = m.shape as Shape;
+        const { shape } = m;
         const spr = this.add.sprite(CANVAS_W / 2, CANVAS_H / 2, this.primitiveTexture(shape));
         this.addObject(`${shape}_${Date.now()}`, spr, { kind: 'primitive', shape, name: SHAPE_NAMES[shape] }, SHAPE_TYPES[shape], true);
         break;
@@ -258,16 +260,18 @@ class EditorScene extends Phaser.Scene {
 
       // screenX/screenY are iframe pixels; without them the sprite goes to the canvas center.
       case 'ADD_SPRITE_FROM_ASSET': {
-        const { file } = m;
-        const { x, y } = m.screenX === undefined
+        const { file, screenX, screenY } = m;
+        const { x, y } = screenX === undefined || screenY === undefined
           ? { x: CANVAS_W / 2, y: CANVAS_H / 2 }
-          : this.cameras.main.getWorldPoint(this.scale.transformX(m.screenX), this.scale.transformY(m.screenY));
+          : this.cameras.main.getWorldPoint(this.scale.transformX(screenX), this.scale.transformY(screenY));
         this.withAssetTexture(file.name, file.dataUrl, key => {
           const data: SpriteData = { kind: 'sprite', name: file.name, assetName: file.name, assetFullPath: file.fullPath ?? '' };
           this.addObject(`${file.name}_${Date.now()}`, this.add.sprite(Math.round(x), Math.round(y), key), data, 'Sprite', true);
         });
         break;
       }
+
+      default: unhandled(m);
     }
   }
 
@@ -314,33 +318,25 @@ class EditorScene extends Phaser.Scene {
     cb(key);
   }
 
-  private serialize(spr: Sprite) {
-    return {
-      x: spr.x, y: spr.y, rotation: spr.rotation,
-      scaleX: spr.scaleX, scaleY: spr.scaleY,
-      alpha: spr.alpha, visible: spr.visible, depth: spr.depth,
-      originX: spr.originX, originY: spr.originY,
-      flipX: spr.flipX, flipY: spr.flipY,
-      scrollFactorX: spr.scrollFactorX, scrollFactorY: spr.scrollFactorY,
-      tint: hexTint(spr),
-    };
+  /** Reads every table property from the sprite (descriptor `get`, else `sprite[key]`). */
+  private serialize(spr: Sprite): ObjectProps {
+    const out: Partial<Record<keyof ObjectProps, unknown>> = {};
+    for (const k of PROP_KEYS) {
+      const d = describe(k);
+      out[k] = d.get ? d.get(spr) : (spr as unknown as Record<string, unknown>)[k];
+    }
+    return out as ObjectProps;
   }
 
-  /** Applies only the props present in `p`. */
-  private applyProps(s: Sprite, p: any) {
-    if (p.x !== undefined) s.x = p.x;
-    if (p.y !== undefined) s.y = p.y;
-    if (p.rotation !== undefined) s.rotation = p.rotation;
-    if (p.scaleX !== undefined) s.scaleX = p.scaleX;
-    if (p.scaleY !== undefined) s.scaleY = p.scaleY;
-    if (p.alpha !== undefined) s.alpha = p.alpha;
-    if (p.visible !== undefined) s.visible = p.visible;
-    if (p.depth !== undefined) s.setDepth(p.depth);
-    if (p.tint !== undefined) s.setTint(parseInt(p.tint.replace('#', ''), 16));
-    if (p.originX !== undefined || p.originY !== undefined) s.setOrigin(p.originX ?? s.originX, p.originY ?? s.originY);
-    if (p.flipX !== undefined || p.flipY !== undefined) s.setFlip(p.flipX ?? s.flipX, p.flipY ?? s.flipY);
-    if (p.scrollFactorX !== undefined || p.scrollFactorY !== undefined)
-      s.setScrollFactor(p.scrollFactorX ?? s.scrollFactorX, p.scrollFactorY ?? s.scrollFactorY);
+  /** Applies only the props present in `p` (descriptor `set`, else assigns `sprite[key]`). */
+  private applyProps(s: Sprite, p: Partial<ObjectProps>) {
+    for (const k of PROP_KEYS) {
+      const v = p[k];
+      if (v === undefined) continue;
+      const d = describe(k);
+      if (d.set) d.set(s, v);
+      else (s as unknown as Record<string, unknown>)[k] = v;
+    }
   }
 
   private drawCanvasFrame() {
