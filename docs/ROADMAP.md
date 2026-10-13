@@ -85,7 +85,7 @@ Effort: **S** (under a day) · **M** (a few days) · **L** (a week or more).
 - [ ] **M** **Scene list** = scene registry (or, before adoption, the scanned scenes) joined with `scenecaster/scenes/*.scene.json`. Each scene shows a state: *layout + code*, *code only* (greyed, no canvas; Boot, Preload, Audio...), or *layout only* (warning: no scene with that key). "Create layout" on a code-only scene; rename/delete apply to layout files only and warn if a code scene still uses the key. One layout per scene key.
 - [ ] **S** *Optional:* scene flow view (Boot → Title → Game, UI launched over Game) drawn from the registry
 - [x] **M** **Disable live mode** (decided: not used, and the browser reloads on file changes anyway). Switch it off behind one flag, default off, rather than deleting it: hide the embedded game iframe, edit overlay, Install Bridge UI and live inspector, and keep `src/bridge/` and the live-mode code in the repo, unused. Keep **Run dev server** with its console and an **Open in browser** link (see Phase 6). Move the live-only code out of the main `App.tsx` path so disabling it also removes its state from the design-mode code; this makes it easy to re-enable later. Update the README, which still advertises live mode.
-- [ ] **M** Clean up `App.tsx` (architecture item 4), now design mode only: hooks for the project, the scene and the dev server instead of one 989-line component
+- [x] **M** Clean up `App.tsx` (architecture item 4), now design mode only: hooks for the project, the scene and the dev server instead of one 989-line component
 - [ ] **S** Multi-select, copy/paste, arrow-key nudge, per-scene camera persistence, recent projects
 
 ### Phase 2 — Asset pipeline (your stated use case)
