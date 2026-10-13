@@ -1,6 +1,6 @@
 // The scene file format and its validation. Pure functions, no I/O.
 // One object per line keeps diffs small and lets an AI edit the file safely.
-import { PROPS, PROP_KEYS, PROP_DEFAULTS, describe, type ObjectProps } from './props';
+import { PROPS, PROP_KEYS, PROP_DEFAULTS, describe, extensionKeys, type EngineId, type ObjectProps } from './props';
 import { ANCHORS, type Anchor, type SceneObject, type Shape } from './protocol';
 
 export const SCENE_VERSION = 1;
@@ -37,22 +37,22 @@ export function uniqueName(base: string, taken: Iterable<string>): string {
 }
 
 /** Keys in a fixed order so saving an unchanged scene never produces a diff. */
-function orderObject(o: SceneObject): Record<string, unknown> {
+function orderObject(o: SceneObject, engine: EngineId): Record<string, unknown> {
   const out: Record<string, unknown> = { id: o.id, name: o.name, kind: o.kind };
   if (o.kind === 'sprite') out.asset = o.asset; else out.shape = o.shape;
   for (const k of PROP_KEYS) if (!describe(k).engine) out[k] = o[k];
   out.anchor = o.anchor;
   out.interactive = o.interactive;
-  const phaser: Record<string, unknown> = {};
-  for (const k of PROP_KEYS) if (describe(k).engine === 'phaser') phaser[k] = o[k];
-  out.phaser = phaser;
+  const ext: Record<string, unknown> = {};
+  for (const k of extensionKeys(engine)) ext[k] = o[k];
+  out[engine] = ext;
   return out;
 }
 
-export function formatScene(doc: SceneDoc): string {
+export function formatScene(doc: SceneDoc, engine: EngineId): string {
   const head = `  "version": ${doc.version},\n  "key": ${JSON.stringify(doc.key)},\n  "overlay": ${doc.overlay},\n`;
   const body = doc.objects.length
-    ? `  "objects": [\n${doc.objects.map(o => '    ' + JSON.stringify(orderObject(o))).join(',\n')}\n  ]\n`
+    ? `  "objects": [\n${doc.objects.map(o => '    ' + JSON.stringify(orderObject(o, engine))).join(',\n')}\n  ]\n`
     : '  "objects": []\n';
   return `{\n${head}${body}}\n`;
 }
@@ -61,7 +61,7 @@ const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'obj
 
 /** Never throws. Bad objects are skipped and reported; missing props take defaults. */
 /** `fatal`: the file could not be understood at all; the returned doc is empty and must never be saved over the file. */
-export function parseScene(raw: unknown, expectedKey: string): { doc: SceneDoc; problems: SceneProblem[]; fatal: boolean } {
+export function parseScene(raw: unknown, expectedKey: string, engine: EngineId): { doc: SceneDoc; problems: SceneProblem[]; fatal: boolean } {
   const problems: SceneProblem[] = [];
   const err = (message: string) => problems.push({ level: 'error', message });
   const warn = (message: string) => problems.push({ level: 'warning', message });
@@ -88,9 +88,14 @@ export function parseScene(raw: unknown, expectedKey: string): { doc: SceneDoc; 
     if (r.kind !== 'sprite' && r.kind !== 'primitive') return err(`${label}: unknown kind ${JSON.stringify(r.kind)}; skipped.`);
 
     const props = { ...PROP_DEFAULTS } as Record<string, unknown>;
-    const phaserSrc = isRecord(r.phaser) ? r.phaser : {};
+    const extSrc = isRecord(r[engine]) ? r[engine] as Record<string, unknown> : {};
+    const extKeys: string[] = extensionKeys(engine);
+    for (const k of Object.keys(extSrc)) if (!extKeys.includes(k)) warn(`${label}: "${k}" is not a ${engine} extension field; ignored.`);
+    for (const [ns, val] of Object.entries(r)) if (ns !== engine && isRecord(val)) warn(`${label}: extension "${ns}" does not belong to the ${engine} engine; ignored.`);
     for (const k of PROP_KEYS) {
-      const v = describe(k).engine === 'phaser' ? phaserSrc[k] : r[k];
+      const e = describe(k).engine;
+      if (e && e !== engine) continue;
+      const v = e ? extSrc[k] : r[k];
       if (v === undefined) continue;
       if (typeof v === typeof PROPS[k].default && !(typeof v === 'number' && !Number.isFinite(v))) props[k] = v;
       else warn(`${label}: invalid value for "${k}"; using the default.`);

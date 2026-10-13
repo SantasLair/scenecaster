@@ -5,8 +5,8 @@ import { useSceneModel } from '../sceneModel';
 import { ANCHORS, type Anchor } from '../../../shared/protocol';
 import { InspectorField, PresetButton } from './Controls';
 import {
-  PROPS, PROP_KEYS, describe, normalizeEdit, pickProps, round2,
-  type ObjectProps, type PropKey, type PropSection,
+  PROPS, profileKeys, describe, normalizeEdit, pickProps, round2,
+  type EngineId, type ObjectProps, type PropKey, type PropSection,
 } from '../../../shared/props';
 
 type OnEdit = (p: Partial<ObjectProps>, commit?: boolean) => void;
@@ -18,15 +18,15 @@ const ORIGIN_PRESETS = [
 ];
 const SCROLL_PRESETS = [{ l: 'UI (0)', v: 0 }, { l: 'World (1)', v: 1 }];
 
-/** Table keys grouped by `ui.section`, in table order. */
-const SECTIONS: [PropSection, PropKey[]][] = (() => {
+/** The engine profile's fields (core plus its extensions) grouped by `ui.section`, in table order. */
+const sectionsFor = (engine: EngineId): [PropSection, PropKey[]][] => {
   const map = new Map<PropSection, PropKey[]>();
-  for (const k of PROP_KEYS) {
+  for (const k of profileKeys(engine)) {
     const s = PROPS[k].ui.section;
     map.set(s, [...(map.get(s) ?? []), k]);
   }
   return [...map];
-})();
+};
 
 /** Hand-written additions rendered under a section's fields. */
 const SECTION_EXTRAS: Partial<Record<PropSection, (p: ObjectProps, onEdit: OnEdit) => ReactNode>> = {
@@ -63,9 +63,10 @@ const SECTION_EXTRAS: Partial<Record<PropSection, (p: ObjectProps, onEdit: OnEdi
 };
 
 /** Design-mode inspector, driven by the property table in src/shared/props.ts. */
-export default function Inspector({ selectedId, onEdit, onMeta, onCommit, onDelete }: {
+export default function Inspector({ engine, selectedId, onEdit, onMeta, onCommit, onDelete }: {
   onMeta: (m: { anchor?: Anchor | null; interactive?: boolean }) => void;
   /** Called when an edit gesture ends (blur, Enter, toggle): one undo step. */
+  engine: EngineId;
   selectedId: string;
   onEdit: OnEdit;
   onCommit: () => void;
@@ -99,7 +100,7 @@ export default function Inspector({ selectedId, onEdit, onMeta, onCommit, onDele
         <div className="text-[10px] text-gray-500 mb-0.5">ID</div>
         <div className="text-xs text-white font-mono truncate">{selectedId}</div>
       </div>
-      {SECTIONS.map(([section, keys]) => (
+      {sectionsFor(engine).map(([section, keys]) => (
         <section key={section}>
           <div className="section-label mb-2">{section}</div>
           {keys.every(k => describe(k).ui.control === 'toggle')

@@ -83,6 +83,7 @@ Effort: **S** (under a day) · **M** (a few days) · **L** (a week or more).
 - [ ] **S** *(Partial: `key` and `overlay` are saved and validated; no overlay backdrop in the viewport yet.)* Scene `key` field that must match the Phaser scene key, plus an `overlay` flag (the scene draws over another, so the editor shows a neutral backdrop and the canvas size comes from the game)
 - [x] **S** Project root discovery: Open Project finds the nearest `package.json` (e.g. `dungeon-strategy/game`) or lets you pick it; remembers it
 - [x] **S** Write nothing on open. Today the canvas-size prompt writes `.phaser-forge.json` immediately; defer that until a setting changes or something is saved.
+- [x] **S** **Engine profile:** `engine` ("phaser") in `scenecaster/project.json`; a data-driven profile table (`src/shared/props.ts`) lists the engine extension fields; the inspector renders core plus the active profile; validation warns on fields outside it.
 - [ ] **M** **`scenecaster/project.json`** *(Partial: file exists with canvas size and dev script only.)* (the project's metadata, read by both the editor and, once adopted, the game):
   - game settings: canvas size, scale mode, physics, background colour, Phaser version
   - scene registry: key, kind (`visual` / `logic` / `overlay`), layout file if any, boot order

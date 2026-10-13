@@ -3,6 +3,7 @@ import type React from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useEditorStore, ObjectProps } from '../store';
 import type { ObjectItem } from '../components/ObjectsPanel';
+import type { EngineId } from '../../../shared/props';
 import { PROP_DEFAULTS, PROP_KEYS, pickProps, readWireProps } from '../../../shared/props';
 import { DEFAULT_SCENE } from '../../../shared/layout';
 import { formatScene, parseScene, newId, uniqueName, toIdentifier } from '../../../shared/scene';
@@ -38,6 +39,8 @@ interface Options {
   projectFolder: string | null;
   devScript: string;
   canvasSize: { w: number; h: number };
+  /** The project's engine profile: decides the scene file's extension namespace. */
+  engine: EngineId;
   ensureConfigPersisted: (folder: string, devScript: string) => Promise<IpcResult>;
   appendLog: (text: string) => void;
   showConsole: () => void;
@@ -49,7 +52,7 @@ interface Options {
 
 /** The scene being edited: tool, save state, undo/redo, and the viewport message protocol. The objects live in sceneModel. */
 export function useScene({
-  iframeRef, send, projectFolder, devScript, canvasSize, ensureConfigPersisted, appendLog, showConsole, readOnly, onForgeMessage,
+  iframeRef, send, projectFolder, devScript, canvasSize, engine, ensureConfigPersisted, appendLog, showConsole, readOnly, onForgeMessage,
 }: Options) {
   const [toolMode, setToolMode] = useState<ToolMode>('select');
   const [saving, setSaving] = useState(false);
@@ -223,7 +226,7 @@ export function useScene({
     }
     const { doc, rev: atRev } = useSceneModel.getState();
     setSaving(true);
-    await saveSceneFiles(projectFolder, formatScene(doc), atRev);
+    await saveSceneFiles(projectFolder, formatScene(doc, engine), atRev);
     setSaving(false);
   };
 
@@ -234,7 +237,7 @@ export function useScene({
       return model.blockDoc(DEFAULT_SCENE, [{ level: 'error', message: `${r.error ?? 'Cannot read the scene file.'} The file was left untouched and saving is disabled.` }]);
     }
     if (!r.found) return model.resetDoc(DEFAULT_SCENE);
-    const { doc, problems: found, fatal } = parseScene(r.data, DEFAULT_SCENE);
+    const { doc, problems: found, fatal } = parseScene(r.data, DEFAULT_SCENE, engine);
     if (fatal) return model.blockDoc(DEFAULT_SCENE, [...found, { level: 'error', message: 'The file was left untouched and saving is disabled.' }]);
     await model.loadDoc(doc, found);
   };
@@ -283,7 +286,7 @@ export function useScene({
     if (!projectFolder) return;
     model.resetDoc(DEFAULT_SCENE, 'open');
     const { doc, rev: atRev } = useSceneModel.getState();
-    await saveSceneFiles(projectFolder, formatScene(doc), atRev);
+    await saveSceneFiles(projectFolder, formatScene(doc, engine), atRev);
   };
 
   /** Returns true when the key was an editor shortcut. */

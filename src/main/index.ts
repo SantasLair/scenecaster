@@ -3,6 +3,7 @@ import { spawn, ChildProcess } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { PROJECT_DIR, SCENES_DIR, SCENE_EXT, PROJECT_FILE, SCENE_NAME_RE } from '../shared/layout';
+import { isEngine, DEFAULT_ENGINE } from '../shared/props';
 
 const IS_WIN = process.platform === 'win32';
 const IMAGE_EXTS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'];
@@ -418,12 +419,12 @@ app.whenReady().then(() => {
     const file = projectFile(folder, PROJECT_FILE);
     const cfg = file ? readJson(file) : null;
     if (!cfg?.game?.width || !cfg?.game?.height) return null;
-    return { canvasWidth: cfg.game.width, canvasHeight: cfg.game.height, devScript: cfg.devScript };
+    return { canvasWidth: cfg.game.width, canvasHeight: cfg.game.height, devScript: cfg.devScript, engine: isEngine(cfg.engine) ? cfg.engine : DEFAULT_ENGINE };
   });
-  ipcMain.handle('project:writeConfig', (_e, folder: unknown, config: { canvasWidth: number; canvasHeight: number; devScript?: string }) => {
+  ipcMain.handle('project:writeConfig', (_e, folder: unknown, config: { canvasWidth: number; canvasHeight: number; devScript?: string; engine?: string }) => {
     const file = projectFile(folder, PROJECT_FILE);
     if (!file || !(config?.canvasWidth > 0) || !(config?.canvasHeight > 0)) return { ok: false, error: 'Invalid project config.' };
-    return writeJson(file, { version: 1, game: { width: config.canvasWidth, height: config.canvasHeight }, devScript: config.devScript });
+    return writeJson(file, { version: 1, engine: isEngine(config.engine) ? config.engine : DEFAULT_ENGINE, game: { width: config.canvasWidth, height: config.canvasHeight }, devScript: config.devScript });
   });
 
   // Dev-server scripts only: `dev`, `dev:*`, and variants like `engine:dev:fantasy`.
