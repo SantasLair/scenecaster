@@ -1,22 +1,7 @@
 import { create } from 'zustand';
+import { PROP_DEFAULTS as DEFAULTS, PROP_KEYS, pickProps, type ObjectProps } from '../../shared/props';
 
-export interface ObjectProps {
-  x: number;
-  y: number;
-  rotation: number;
-  scaleX: number;
-  scaleY: number;
-  alpha: number;
-  tint: string;
-  visible: boolean;
-  depth: number;
-  originX: number;
-  originY: number;
-  flipX: boolean;
-  flipY: boolean;
-  scrollFactorX: number;
-  scrollFactorY: number;
-}
+export type { ObjectProps };
 
 export interface HistoryEntry {
   id: string;
@@ -42,20 +27,6 @@ interface EditorState extends ObjectProps {
 }
 
 const MAX_HISTORY = 100;
-
-const DEFAULTS: ObjectProps = {
-  x: 0, y: 0, rotation: 0,
-  scaleX: 1, scaleY: 1,
-  alpha: 1, tint: '#ffffff', visible: true,
-  depth: 0,
-  originX: 0.5, originY: 0.5,
-  flipX: false, flipY: false,
-  scrollFactorX: 1, scrollFactorY: 1,
-};
-const PROP_KEYS = Object.keys(DEFAULTS) as (keyof ObjectProps)[];
-
-const pickProps = (s: ObjectProps): ObjectProps =>
-  Object.fromEntries(PROP_KEYS.map(k => [k, s[k]])) as unknown as ObjectProps;
 
 // Only overwrite the inspector when the history entry belongs to the selected object.
 const applyEntry = (s: EditorState, id: string, props: ObjectProps) =>

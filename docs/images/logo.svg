@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Scenecaster">
+  <title>Scenecaster</title>
+  <defs>
+    <radialGradient id="bg" cx="0.5" cy="0.38" r="0.8">
+      <stop offset="0" stop-color="#2a1a5e"/>
+      <stop offset="0.6" stop-color="#120c2e"/>
+      <stop offset="1" stop-color="#07061a"/>
+    </radialGradient>
+    <linearGradient id="grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#b66dff"/>
+      <stop offset="0.5" stop-color="#7c5cff"/>
+      <stop offset="1" stop-color="#2ea8ff"/>
+    </linearGradient>
+    <linearGradient id="frame" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#c58bff"/>
+      <stop offset="1" stop-color="#4cc3ff"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity=".55"/>
+      <stop offset="0.5" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="9"/>
+    </filter>
+    <pattern id="grid" width="16" height="16" patternUnits="userSpaceOnUse">
+      <path d="M16 0H0V16" fill="none" stroke="#8b7bff" stroke-opacity=".12" stroke-width="1"/>
+    </pattern>
+    <clipPath id="tile"><rect width="256" height="256" rx="56"/></clipPath>
+  </defs>
+  <g clip-path="url(#tile)">
+    <rect width="256" height="256" fill="url(#bg)"/>
+    <rect width="256" height="256" fill="url(#grid)"/>
+    <ellipse cx="128" cy="128" rx="46" ry="46" fill="url(#grad)" opacity=".75" filter="url(#glow)"/>
+  </g>
+  <rect x="1.5" y="1.5" width="253" height="253" rx="54.5" fill="none" stroke="url(#frame)" stroke-opacity=".35" stroke-width="3"/>
+  <!-- scene frame -->
+  <g fill="none" stroke="url(#frame)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M52 92 V60 a8 8 0 0 1 8-8 H92"/>
+    <path d="M164 52 H196 a8 8 0 0 1 8 8 V92"/>
+    <path d="M204 164 V196 a8 8 0 0 1-8 8 H164"/>
+    <path d="M92 204 H60 a8 8 0 0 1-8-8 V164"/>
+  </g>
+  <!-- placed object -->
+  <rect x="98" y="98" width="60" height="60" rx="12" fill="url(#grad)"/>
+  <rect x="98" y="98" width="60" height="60" rx="12" fill="url(#shine)"/>
+  <rect x="98" y="98" width="60" height="60" rx="12" fill="none" stroke="#fff" stroke-opacity=".5" stroke-width="2"/>
+  <!-- move gizmo -->
+  <g stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M166 128 H190 M182 120 l8 8-8 8"/>
+    <path d="M128 90 V66 M120 74 l8-8 8 8"/>
+  </g>
+</svg>

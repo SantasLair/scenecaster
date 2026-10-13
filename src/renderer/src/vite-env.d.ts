@@ -25,7 +25,8 @@ interface ProjectConfig {
 
 interface SavedScene {
   version: number;
-  objects: Record<string, any>[];
+  /** Cast at the disk boundary; not validated on load yet. */
+  objects: import('../../shared/protocol').SceneObject[];
 }
 
 type IpcResult = { ok: boolean; error?: string };
