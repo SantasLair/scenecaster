@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import { spawn, ChildProcess } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import { PROJECT_DIR, SCENES_DIR, SCENE_EXT, PROJECT_FILE, SCENE_NAME_RE } from '../shared/layout';
 
 const IS_WIN = process.platform === 'win32';
 const IMAGE_EXTS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'];
@@ -291,26 +292,17 @@ app.whenReady().then(() => {
     if (!file || !Array.isArray(objects)) return { ok: false, error: 'Invalid scene name or folder.' };
     return writeJson(file, { version: 1, key: name, objects });
   });
-  // Returns { data, legacy }: legacy=true means the data came from the old forge-scene.json (left untouched on disk).
   ipcMain.handle('scene:load', (_e, folder: unknown, name: unknown) => {
     const file = sceneFile(folder, name);
-    const data = file ? readJson(file) : null;
-    if (data) return { data, legacy: false };
-    const legacy = guardFile(folder, LEGACY_SCENE_FILE);
-    const old = legacy ? readJson(legacy) : null;
-    return old ? { data: old, legacy: true } : null;
+    return file ? readJson(file) : null;
   });
 
   // project.json holds game settings; the renderer sees the flat ProjectConfig shape.
   ipcMain.handle('project:readConfig', (_e, folder: unknown) => {
     const file = projectFile(folder, PROJECT_FILE);
     const cfg = file ? readJson(file) : null;
-    if (cfg?.game?.width && cfg?.game?.height) {
-      return { canvasWidth: cfg.game.width, canvasHeight: cfg.game.height, devScript: cfg.devScript };
-    }
-    const legacy = guardFile(folder, LEGACY_CONFIG_FILE);
-    const old = legacy ? readJson(legacy) : null;
-    return old ? { ...old, legacy: true } : null;
+    if (!cfg?.game?.width || !cfg?.game?.height) return null;
+    return { canvasWidth: cfg.game.width, canvasHeight: cfg.game.height, devScript: cfg.devScript };
   });
   ipcMain.handle('project:writeConfig', (_e, folder: unknown, config: { canvasWidth: number; canvasHeight: number; devScript?: string }) => {
     const file = projectFile(folder, PROJECT_FILE);

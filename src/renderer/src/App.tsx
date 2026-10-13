@@ -234,10 +234,8 @@ export default function App() {
   };
 
   const loadScene = async (folder: string) => {
-    const loaded = await api.loadScene(folder, DEFAULT_SCENE);
+    const data = await api.loadScene(folder, DEFAULT_SCENE);
     setSaveStatus('saved');
-    if (loaded?.legacy) appendLog('\n[Loaded legacy forge-scene.json; the next save writes scenecaster/scenes/main.scene.json. The old file is left untouched.]\n');
-    const data = loaded?.data;
     if (!data?.objects?.length) return;
     const objects = await Promise.all(data.objects.map(async obj =>
       obj.kind === 'sprite' && obj.assetFullPath
@@ -320,7 +318,7 @@ export default function App() {
     const folder = await api.openFolder();
     if (!folder) return;
     const config = await api.readProjectConfig(folder);
-    if (config?.canvasWidth && config?.canvasHeight) openProject(folder, config, !config.legacy);
+    if (config?.canvasWidth && config?.canvasHeight) openProject(folder, config, true);
     else setPendingSetupFolder(folder);
   };
 
