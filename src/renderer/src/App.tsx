@@ -255,6 +255,8 @@ export default function App() {
   const handleRunStop = async () => {
     if (devStatus === 'running' || devStatus === 'starting') return stopDev();
     if (!projectFolder) return;
+    // Starting the game replaces the editor scene, so persist unsaved work first.
+    if (saveStatus === 'unsaved') handleSave();
     setDevStatus('starting');
     setDevLogs('');
     showConsole();
@@ -471,7 +473,8 @@ export default function App() {
         setHierarchy([]);
         send({ type: 'SET_TOOL_MODE', mode: toolMode });
         send({ type: 'SET_SNAP', enabled: store.snapEnabled });
-        const folder = pendingLoadFolderRef.current;
+        // Also reload after the iframe is swapped back from a running game, which resets the scene.
+        const folder = pendingLoadFolderRef.current ?? projectFolder;
         pendingLoadFolderRef.current = null;
         if (folder) loadScene(folder);
         break;
