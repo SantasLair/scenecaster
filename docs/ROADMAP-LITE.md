@@ -69,7 +69,6 @@ Effort: **S** (under a day) · **M** (a few days) · **L** (a week or more).
 - [ ] **M** Command-based history; add/delete/duplicate/rename become undoable
 - [x] **S** Move scene storage to `scenecaster/scenes/<name>.scene.json`
 - [ ] **S** **Naming:** the folder name is one constant in the editor. `MIGRATE.md`, `check.mjs`, the README and the `CLAUDE.md` pointer are generated from it, so a future rename is a one-line change. The folder is a normal (not hidden) directory, because many search tools skip dot-folders.
-- [ ] **S** **Legacy migration:** read the old `forge-scene.json` and `.phaser-forge.json` for one release and offer to move them into `scenecaster/` (scene file, `project.json`). Remove the old files only after the move is confirmed.
 - [ ] **S** AI-friendly format: relative asset paths, `version`, unique readable `name` per object, UUID `id` kept, `parentId`, stable key order, one object per few lines for clean diffs
 - [ ] **S** Scene `key` field that must match the Phaser scene key, plus an `overlay` flag (the scene draws over another, so the editor shows a neutral backdrop and the canvas size comes from the game)
 - [ ] **S** Project root discovery: Open Project finds the nearest `package.json` (e.g. `dungeon-strategy/game`) or lets you pick it; remembers it
@@ -163,7 +162,7 @@ Before calling Phase 3 done, run the whole loop (open, see scenes and settings, 
 
 | Project | Why |
 |---|---|
-| `forge-editor-test` | Has an old bridge and `forge-scene.json`; legacy migration and bridge cleanup test |
+| `forge-editor-test` | Has an old bridge; bridge cleanup test |
 | `lords-of-kastrallia` | TypeScript, `CLAUDE.md` architecture rules, adapter layer, 2 scenes |
 | `keep-and-conquer` | 4 scenes, overlay UI |
 | `ember-keep` | Flat `public/` with 742 assets; folder detection and performance |
