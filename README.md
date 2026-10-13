@@ -1,4 +1,6 @@
-# ⚡ Scenecaster
+<p align="center"><img src="docs/images/logo.svg" width="96" alt="Scenecaster logo"></p>
+
+# Scenecaster
 
 > Stop guessing coordinates. Just drag it.
 
