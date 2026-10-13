@@ -51,7 +51,7 @@ class EditorScene extends Phaser.Scene {
   constructor() { super('EditorScene'); }
 
   create() {
-    this.cameras.main.setBackgroundColor('#07061a');
+    this.cameras.main.setBackgroundColor('#1e1e1e');
     this.drawCanvasFrame();
 
     this.selGfx = this.add.graphics().setDepth(997);
@@ -341,15 +341,15 @@ class EditorScene extends Phaser.Scene {
 
   private drawCanvasFrame() {
     this.add.graphics().setDepth(-2)
-      .fillStyle(0x07061a, 1)
+      .fillStyle(0x1e1e1e, 1)
       .fillRect(-4000, -4000, 8000 + CANVAS_W, 8000 + CANVAS_H);
     this.add.graphics().setDepth(-1)
-      .fillStyle(0x120c2e, 1)
+      .fillStyle(0x2b2b2b, 1)
       .fillRect(0, 0, CANVAS_W, CANVAS_H);
 
     const border = this.add.graphics().setDepth(0);
-    border.lineStyle(1, 0x334155, 1).strokeRect(0, 0, CANVAS_W, CANVAS_H);
-    border.lineStyle(2, 0x475569, 1);
+    border.lineStyle(1, 0x444444, 1).strokeRect(0, 0, CANVAS_W, CANVAS_H);
+    border.lineStyle(2, 0x5a5a5a, 1);
     const tick = 16;
     for (const [cx, cy] of [[0, 0], [CANVAS_W, 0], [0, CANVAS_H], [CANVAS_W, CANVAS_H]]) {
       border.lineBetween(cx, cy, cx + (cx === 0 ? tick : -tick), cy);
@@ -367,12 +367,12 @@ class EditorScene extends Phaser.Scene {
   private drawSelection(b: Phaser.Geom.Rectangle) {
     const pad = 5;
     const x = b.x - pad, y = b.y - pad, w = b.width + pad * 2, h = b.height + pad * 2;
-    this.selGfx.lineStyle(4, 0x3b82f6, 0.25).strokeRect(x - 2, y - 2, w + 4, h + 4);
-    this.selGfx.lineStyle(1.5, 0x60a5fa, 1).strokeRect(x, y, w, h);
+    this.selGfx.lineStyle(4, 0x4aa3ff, 0.25).strokeRect(x - 2, y - 2, w + 4, h + 4);
+    this.selGfx.lineStyle(1.5, 0x5fa3e8, 1).strokeRect(x, y, w, h);
     const hs = 5;
     for (const [cx, cy] of [[x, y], [x + w, y], [x, y + h], [x + w, y + h]]) {
       this.selGfx.fillStyle(0xffffff, 1).fillRect(cx - hs / 2, cy - hs / 2, hs, hs);
-      this.selGfx.lineStyle(1, 0x3b82f6, 1).strokeRect(cx - hs / 2, cy - hs / 2, hs, hs);
+      this.selGfx.lineStyle(1, 0x4aa3ff, 1).strokeRect(cx - hs / 2, cy - hs / 2, hs, hs);
     }
   }
 

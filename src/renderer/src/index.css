@@ -1,44 +1,44 @@
 @import "tailwindcss";
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
 
 @theme {
-  /* Indigo-tinted neutrals (re-tints every gray-* utility) */
-  --color-gray-50: #f4f2ff;
-  --color-gray-100: #e9e6fb;
-  --color-gray-200: #d6d2f0;
-  --color-gray-300: #bdb8e0;
-  --color-gray-400: #a29cd0;
-  --color-gray-500: #8d86c0;
-  --color-gray-600: #8279b8;
-  --color-gray-700: #2d2559;
-  --color-gray-800: #1c1642;
-  --color-gray-900: #120c2e;
-  --color-gray-950: #07061a;
+  /* Neutral grays matching tulio-editor (re-tints every gray-* utility) */
+  --color-gray-50: #f5f5f5;
+  --color-gray-100: #ececec;
+  --color-gray-200: #e0e0e0;
+  --color-gray-300: #cfcfcf;
+  --color-gray-400: #bdbdbd;
+  --color-gray-500: #9a9a9a;
+  --color-gray-600: #7a7a7a;
+  --color-gray-700: #444444;
+  --color-gray-800: #3c3c3c;
+  --color-gray-900: #2b2b2b;
+  --color-gray-950: #1e1e1e;
 
-  /* Violet / blue accent scale (blue-* utilities become the violet accent) */
-  --color-blue-50: #f5f0ff;
-  --color-blue-100: #ebe1ff;
-  --color-blue-200: #dac8ff;
-  --color-blue-300: #c9a4ff;
-  --color-blue-400: #b66dff;
-  --color-blue-500: #7c5cff;
-  --color-blue-600: #6a49ee;
-  --color-blue-700: #553bc4;
-  --color-blue-800: #402e94;
-  --color-blue-900: #2b2070;
-  --color-blue-950: #1a1342;
+  /* Tulio blue accent (blue-* utilities) */
+  --color-blue-50: #eef6ff;
+  --color-blue-100: #d9ebff;
+  --color-blue-200: #b8dbff;
+  --color-blue-300: #8cc5ff;
+  --color-blue-400: #5fa3e8;
+  --color-blue-500: #4aa3ff;
+  --color-blue-600: #3a8be0;
+  --color-blue-700: #2f70b8;
+  --color-blue-800: #265a93;
+  --color-blue-900: #1f4770;
+  --color-blue-950: #162f4a;
 }
 
 :root {
-  --sc-bg: #07061a;
-  --sc-panel: #120c2e;
-  --sc-panel-2: #14102e;
-  --sc-border: #2d2559;
-  --sc-text: #ece9ff;
-  --sc-muted: #8d86c0;
-  --sc-violet: #7c5cff;
-  --sc-violet-light: #b66dff;
-  --sc-sky: #2ea8ff;
+  --sc-bg: #1e1e1e;
+  --sc-panel: #2b2b2b;
+  --sc-panel-2: #3c3c3c;
+  --sc-border: #444444;
+  --sc-text: #e0e0e0;
+  --sc-muted: #bdbdbd;
+  --sc-violet: #4aa3ff;
+  --sc-violet-light: #5fa3e8;
+  --sc-sky: #4aa3ff;
 }
 
 /* Base */
@@ -48,7 +48,7 @@ html, body, #root {
   margin: 0;
   padding: 0;
   overflow: hidden;
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: "Segoe UI", "Segoe UI Variable", system-ui, -apple-system, "Open Sans", "Noto Sans", Arial, sans-serif;
   background: var(--sc-bg);
   color: var(--sc-text);
   -webkit-font-smoothing: antialiased;
@@ -58,7 +58,7 @@ html, body, #root {
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: #3a2f78;
+  background: #5a5a5a;
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover { background: var(--sc-violet); }
@@ -75,7 +75,7 @@ input[type='number']::-webkit-outer-spin-button { -webkit-appearance: none; }
 input[type='color'] {
   -webkit-appearance: none;
   padding: 0;
-  border: 1px solid #4a3d8f;
+  border: 1px solid #5a5a5a;
   border-radius: 4px;
   cursor: pointer;
 }
@@ -87,9 +87,9 @@ input[type='color']::-webkit-color-swatch {
 
 /* Toolbar */
 .toolbar {
-  background: linear-gradient(180deg, #1a1340 0%, var(--sc-panel-2) 100%);
+  background: var(--sc-panel-2);
   border-bottom: 1px solid var(--sc-border);
-  box-shadow: 0 1px 10px rgba(124,92,255,.18), 0 1px 8px rgba(0,0,0,.5);
+  box-shadow: 0 1px 8px rgba(0,0,0,.4);
 }
 
 /* Inspector section divider */
