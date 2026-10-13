@@ -29,6 +29,8 @@ export interface PropDescriptor<K extends PropKind = PropKind> {
   round?: boolean;
   /** Editable in live mode via FORGE_SET_PROP (must match bridge SETTABLE_PROPS + depth). */
   live?: boolean;
+  /** Engine-specific: saved under the scene file's `phaser` object, never in the neutral core. */
+  engine?: 'phaser';
   /** Defaults: read/assign sprite[key]. Method syntax on purpose (bivariant params). */
   get?(s: Sprite): KindValue[K];
   set?(s: Sprite, v: KindValue[K]): void;
@@ -47,7 +49,7 @@ export const PROPS = {
   scaleX:   { kind: 'number', default: 1, round: true, live: true, ui: { section: 'Scale', label: 'Scale X', min: 0 } },
   scaleY:   { kind: 'number', default: 1, round: true, live: true, ui: { section: 'Scale', label: 'Scale Y', min: 0 } },
   alpha:    { kind: 'number', default: 1, round: true, live: true, ui: { section: 'Appearance', label: 'Alpha', min: 0, max: 1, clamp: true } },
-  tint:     { kind: 'color', default: '#ffffff',
+  tint:     { kind: 'color', default: '#ffffff', engine: 'phaser',
               get: (s: Sprite) => hexTint(s),
               set: (s: Sprite, v: string) => { s.setTint(parseInt(v.replace('#', ''), 16)); },
               ui: { section: 'Appearance', label: 'Tint' } },
@@ -55,16 +57,16 @@ export const PROPS = {
   depth:    { kind: 'number', default: 0, live: true,
               set: (s: Sprite, v: number) => { s.setDepth(v); },
               ui: { section: 'Depth (Z-order)', label: 'Depth', step: 1, integer: true } },
-  originX:  { kind: 'number', default: 0.5, round: true,
+  originX:  { kind: 'number', default: 0.5, engine: 'phaser', round: true,
               set: (s: Sprite, v: number) => { s.setOrigin(v, s.originY); },
               ui: { section: 'Origin (Pivot)', label: 'Origin X', min: 0, max: 1, clamp: true } },
-  originY:  { kind: 'number', default: 0.5, round: true,
+  originY:  { kind: 'number', default: 0.5, engine: 'phaser', round: true,
               set: (s: Sprite, v: number) => { s.setOrigin(s.originX, v); },
               ui: { section: 'Origin (Pivot)', label: 'Origin Y', min: 0, max: 1, clamp: true } },
-  flipX:    { kind: 'boolean', default: false, ui: { section: 'Flip', label: 'Flip X', control: 'toggle' } },
-  flipY:    { kind: 'boolean', default: false, ui: { section: 'Flip', label: 'Flip Y', control: 'toggle' } },
-  scrollFactorX: { kind: 'number', default: 1, ui: { section: 'Scroll Factor', label: 'Factor X', step: 0.1, min: 0, max: 1 } },
-  scrollFactorY: { kind: 'number', default: 1, ui: { section: 'Scroll Factor', label: 'Factor Y', step: 0.1, min: 0, max: 1 } },
+  flipX:    { kind: 'boolean', default: false, engine: 'phaser', ui: { section: 'Flip', label: 'Flip X', control: 'toggle' } },
+  flipY:    { kind: 'boolean', default: false, engine: 'phaser', ui: { section: 'Flip', label: 'Flip Y', control: 'toggle' } },
+  scrollFactorX: { kind: 'number', default: 1, engine: 'phaser', ui: { section: 'Scroll Factor', label: 'Factor X', step: 0.1, min: 0, max: 1 } },
+  scrollFactorY: { kind: 'number', default: 1, engine: 'phaser', ui: { section: 'Scroll Factor', label: 'Factor Y', step: 0.1, min: 0, max: 1 } },
 } as const satisfies Record<string, AnyPropDescriptor>;
 
 export type PropKey = keyof typeof PROPS;

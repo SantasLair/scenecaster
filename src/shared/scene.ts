@@ -1,7 +1,7 @@
 // The scene file format and its validation. Pure functions, no I/O.
 // One object per line keeps diffs small and lets an AI edit the file safely.
-import { PROPS, PROP_KEYS, PROP_DEFAULTS, type ObjectProps } from './props';
-import type { SceneObject, Shape } from './protocol';
+import { PROPS, PROP_KEYS, PROP_DEFAULTS, describe, type ObjectProps } from './props';
+import { ANCHORS, type Anchor, type SceneObject, type Shape } from './protocol';
 
 export const SCENE_VERSION = 1;
 const SHAPES: Shape[] = ['rect', 'circle', 'triangle'];
@@ -20,17 +20,32 @@ export interface SceneProblem { level: 'error' | 'warning'; message: string }
 export const newId = () => crypto.randomUUID();
 
 /** `base`, or `base 2`, `base 3`... the first name not in `taken` (case-insensitive). */
+/** A name usable as a code identifier (the code contract for UI scenes). */
+export const isIdentifier = (n: string) => /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(n);
+
+/** Turns any text into a valid identifier. */
+export function toIdentifier(s: string): string {
+  const t = s.trim().replace(/[^A-Za-z0-9_$]+/g, '_').replace(/^_+(?=.)|_+$/g, '');
+  return !t ? 'Object' : /^[0-9]/.test(t) ? '_' + t : t;
+}
+
+/** `base`, or `base2`, `base3`... the first name not in `taken` (case-insensitive). */
 export function uniqueName(base: string, taken: Iterable<string>): string {
   const used = new Set([...taken].map(n => n.toLowerCase()));
   if (!used.has(base.toLowerCase())) return base;
-  for (let i = 2; ; i++) if (!used.has(`${base} ${i}`.toLowerCase())) return `${base} ${i}`;
+  for (let i = 2; ; i++) if (!used.has(`${base}${i}`.toLowerCase())) return `${base}${i}`;
 }
 
 /** Keys in a fixed order so saving an unchanged scene never produces a diff. */
 function orderObject(o: SceneObject): Record<string, unknown> {
-  const out: Record<string, unknown> = { id: o.id, name: o.name, kind: o.kind, parentId: o.parentId };
+  const out: Record<string, unknown> = { id: o.id, name: o.name, kind: o.kind };
   if (o.kind === 'sprite') out.asset = o.asset; else out.shape = o.shape;
-  for (const k of PROP_KEYS) out[k] = o[k];
+  for (const k of PROP_KEYS) if (!describe(k).engine) out[k] = o[k];
+  out.anchor = o.anchor;
+  out.interactive = o.interactive;
+  const phaser: Record<string, unknown> = {};
+  for (const k of PROP_KEYS) if (describe(k).engine === 'phaser') phaser[k] = o[k];
+  out.phaser = phaser;
   return out;
 }
 
@@ -73,12 +88,21 @@ export function parseScene(raw: unknown, expectedKey: string): { doc: SceneDoc; 
     if (r.kind !== 'sprite' && r.kind !== 'primitive') return err(`${label}: unknown kind ${JSON.stringify(r.kind)}; skipped.`);
 
     const props = { ...PROP_DEFAULTS } as Record<string, unknown>;
+    const phaserSrc = isRecord(r.phaser) ? r.phaser : {};
     for (const k of PROP_KEYS) {
-      if (r[k] === undefined) continue;
-      if (typeof r[k] === typeof PROPS[k].default && !(typeof r[k] === 'number' && !Number.isFinite(r[k]))) props[k] = r[k];
+      const v = describe(k).engine === 'phaser' ? phaserSrc[k] : r[k];
+      if (v === undefined) continue;
+      if (typeof v === typeof PROPS[k].default && !(typeof v === 'number' && !Number.isFinite(v))) props[k] = v;
       else warn(`${label}: invalid value for "${k}"; using the default.`);
     }
-    const meta = { id: r.id, name: r.name, parentId: typeof r.parentId === 'string' ? r.parentId : null };
+    if (r.depth === undefined) props.depth = i; // default depth = list order
+    let anchor: Anchor | null = null;
+    if (r.anchor !== undefined && r.anchor !== null) {
+      if (ANCHORS.includes(r.anchor as Anchor)) anchor = r.anchor as Anchor;
+      else warn(`${label}: unknown anchor ${JSON.stringify(r.anchor)}; using none.`);
+    }
+    const meta = { id: r.id, name: r.name, anchor, interactive: r.interactive === true };
+    if (!isIdentifier(r.name)) warn(`${label} is not a valid code identifier (letters, digits, _ and $; no spaces, not starting with a digit).`);
     let obj: SceneObject;
     if (r.kind === 'sprite') {
       if (typeof r.asset !== 'string' || !r.asset) return err(`${label}: sprite has no "asset"; skipped.`);
@@ -96,8 +120,5 @@ export function parseScene(raw: unknown, expectedKey: string): { doc: SceneDoc; 
     doc.objects.push(obj);
   });
 
-  for (const o of doc.objects) {
-    if (o.parentId && !ids.has(o.parentId)) warn(`"${o.name}": parentId ${o.parentId} does not exist.`);
-  }
   return { doc, problems, fatal: false };
 }
