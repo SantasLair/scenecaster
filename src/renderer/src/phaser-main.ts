@@ -406,7 +406,7 @@ class EditorScene extends Phaser.Scene {
   }
 }
 
-new Phaser.Game({
+const game = new Phaser.Game({
   type: Phaser.WEBGL,
   parent: 'game-container',
   width: CANVAS_W,
@@ -418,3 +418,7 @@ new Phaser.Game({
   transparent: true,
   scene: EditorScene,
 });
+
+// Keep the canvas fitted to its dock panel (the iframe is resized by dockview, not the window).
+const container = document.getElementById('game-container');
+if (container) new ResizeObserver(() => game.scale.refresh()).observe(container);

@@ -103,3 +103,30 @@ input[type='color']::-webkit-color-swatch {
   margin-bottom: 2px;
   border-bottom: 1px solid var(--sc-border);
 }
+
+/* Dockview theme: neutral grays, #4aa3ff accent, Segoe UI */
+.sc-dock {
+  --dv-background-color: #1e1e1e;
+  --dv-group-view-background-color: #2b2b2b;
+  --dv-tabs-and-actions-container-background-color: #3c3c3c;
+  --dv-activegroup-visiblepanel-tab-background-color: #2b2b2b;
+  --dv-activegroup-hiddenpanel-tab-background-color: #3c3c3c;
+  --dv-inactivegroup-visiblepanel-tab-background-color: #2b2b2b;
+  --dv-inactivegroup-hiddenpanel-tab-background-color: #3c3c3c;
+  --dv-activegroup-visiblepanel-tab-color: #e0e0e0;
+  --dv-activegroup-hiddenpanel-tab-color: #bdbdbd;
+  --dv-inactivegroup-visiblepanel-tab-color: #bdbdbd;
+  --dv-inactivegroup-hiddenpanel-tab-color: #9a9a9a;
+  --dv-tab-divider-color: #444444;
+  --dv-separator-border: #444444;
+  --dv-paneview-header-border-color: #444444;
+  --dv-drag-over-background-color: rgba(74, 163, 255, 0.25);
+  --dv-drag-over-border-color: #4aa3ff;
+  --dv-sash-color: #444444;
+  --dv-active-sash-color: #4aa3ff;
+  font-family: "Segoe UI", "Segoe UI Variable", system-ui, sans-serif;
+  font-size: 12px;
+  width: 100%;
+  height: 100%;
+}
+.sc-dock .dv-tab.dv-active-tab { box-shadow: inset 0 -2px 0 #4aa3ff; }
