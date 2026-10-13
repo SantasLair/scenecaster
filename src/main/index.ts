@@ -11,6 +11,9 @@ const BRIDGE_FILES = ['phaser-forge-bridge.js', 'phaser-forge-bridge.d.ts'];
 
 const SCRIPT_NAME_RE = /^[\w:.-]+$/;
 
+// Packaged builds take the icon from electron-builder (build/icon.png); this covers dev runs.
+const APP_ICON = path.join(app.getAppPath(), 'build', 'icon.png');
+
 let mainWin: BrowserWindow | null = null;
 let devProc: ChildProcess | null = null;
 /** Canonical (realpath) folder the user picked via `dialog:openFolder`; every path IPC is confined to it. */
@@ -129,6 +132,8 @@ function createWindow(): void {
       sandbox: false,
       webSecurity: false, // lets the file:// renderer embed the localhost game iframe
     },
+    title: 'Scenecaster',
+    icon: APP_ICON,
     titleBarStyle: 'hiddenInset',
     backgroundColor: '#0f1117',
   });
