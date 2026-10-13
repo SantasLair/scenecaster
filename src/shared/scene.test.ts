@@ -52,13 +52,14 @@ describe('flat engine-neutral model', () => {
     expect(r.problems.some(p => p.message.includes('unknown anchor'))).toBe(true);
   });
 
-  it('keeps Phaser-specific props under "phaser" and ignores parentId', () => {
-    const { doc } = parseScene(scene([obj({ parentId: 'x', phaser: { originX: 0, flipX: true } })]), 'main');
+  it('keeps origin in the core, Phaser-specific props under "phaser", and ignores parentId', () => {
+    const { doc } = parseScene(scene([obj({ parentId: 'x', originX: 0, phaser: { flipX: true } })]), 'main');
     expect(doc.objects[0]).not.toHaveProperty('parentId');
     expect(doc.objects[0].originX).toBe(0);
     const out = JSON.parse(formatScene(doc).split('\n').find(l => l.includes('"id"'))!.replace(/,$/, ''));
-    expect(out.phaser).toMatchObject({ originX: 0, flipX: true });
-    expect(out).not.toHaveProperty('originX');
+    expect(out.phaser).toMatchObject({ flipX: true });
+    expect(out.phaser).not.toHaveProperty('originX');
+    expect(out).toMatchObject({ originX: 0, originY: 0.5 });
     expect(out).not.toHaveProperty('parentId');
   });
 

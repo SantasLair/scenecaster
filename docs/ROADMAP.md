@@ -58,7 +58,7 @@ The roadmap is checked against the games in `E:\Gen-AI-Games\phaser-prototypes` 
 The editor is a flat, simple scene editor (like AppGameKit Studio). Scene files are **engine-neutral** so a C#, MonoGame or raylib project can later load them with the same workflow. Schema: `docs/SCENE_FORMAT.md`.
 
 - **Core fields are engine-agnostic:** `name`, `id`, `kind`, `x`, `y`, `scale`, `rotation`, `depth`, `visible`, `locked`, `anchor`, `interactive`, and asset references by key/relative path.
-- **Engine-specific data** (origin, scroll factor, blend, flip, tint) lives under an optional namespaced `phaser` object, or is isolated in the Phaser view adapter. Another engine ignores it.
+- **Engine-specific data** (scroll factor, blend, flip, tint; origin is core) lives under an optional namespaced `phaser` object, or is isolated in the Phaser view adapter. Another engine ignores it.
 - **Flat only:** no layers, containers or `parentId`. Order is `depth`.
 - **UI scenes:** an `overlay` scene draws over another. Named objects are the code contract (names must be valid code identifiers, so `playButton` maps to a variable or field). `anchor` places an object relative to a canvas edge/center with x/y as the offset; `interactive` marks objects the code will wire input to.
 
