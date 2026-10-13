@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import type { Shape } from '../../../shared/protocol';
 
-export interface HierarchyItem {
+export interface ObjectItem {
   id: string;
   name: string;
   type: string;
@@ -12,11 +12,11 @@ export interface HierarchyItem {
 interface ContextMenu {
   x: number;
   y: number;
-  item?: HierarchyItem;
+  item?: ObjectItem;
 }
 
 interface Props {
-  items: HierarchyItem[];
+  items: ObjectItem[];
   selectedId: string | null;
   onSelect: (id: string) => void;
   onDelete: (id: string) => void;
@@ -33,7 +33,7 @@ const PRIMITIVES: { shape: Shape; icon: string; label: string }[] = [
   { shape: 'triangle', icon: '△',  label: 'Triangle'  },
 ];
 
-export default function HierarchyPanel({
+export default function ObjectsPanel({
   items, selectedId, onSelect, onDelete, onDuplicate, onRename,
   onToggleVisible, onToggleLocked, onAddPrimitive,
 }: Props) {
@@ -42,6 +42,8 @@ export default function HierarchyPanel({
   const [addMenuRect, setAddMenuRect] = useState<DOMRect | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameVal, setRenameVal] = useState('');
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const addBtnRef = useRef<HTMLButtonElement>(null);
   const addMenuRef = useRef<HTMLDivElement>(null);
@@ -61,7 +63,7 @@ export default function HierarchyPanel({
     if (renamingId) inputRef.current?.select();
   }, [renamingId]);
 
-  const openMenu = (e: React.MouseEvent, item?: HierarchyItem) => {
+  const openMenu = (e: React.MouseEvent, item?: ObjectItem) => {
     e.preventDefault();
     e.stopPropagation();
     setShowAdd(false);
@@ -92,7 +94,7 @@ export default function HierarchyPanel({
   return (
     <aside className="flex flex-col border-r border-gray-700 bg-gray-800 h-full relative overflow-hidden">
       <div className="px-3 py-2 border-b border-gray-700 flex items-center justify-between flex-shrink-0">
-        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Hierarchy</span>
+        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Objects</span>
         <span className="text-xs text-gray-600">{items.length}</span>
       </div>
 

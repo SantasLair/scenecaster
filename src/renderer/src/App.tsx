@@ -4,7 +4,7 @@ import type React from 'react';
 import { useEditorStore } from './store';
 import { useSceneModel } from './sceneModel';
 import { useHistory } from './history';
-import HierarchyPanel from './components/HierarchyPanel';
+import ObjectsPanel from './components/ObjectsPanel';
 import AssetBrowser from './components/AssetBrowser';
 import Inspector from './components/Inspector';
 import ProblemsPanel from './components/ProblemsPanel';
@@ -13,7 +13,7 @@ import Dock, { DockContext, resetLayout, type DockCtx } from './Dock';
 import type { DockviewApi } from 'dockview-react';
 import { LIVE_MODE } from './live/config';
 import { useLiveBridge } from './live/useLiveBridge';
-import { LiveHierarchy, LiveInspector, LiveOverlay, LiveModeToggle } from './live/LivePanels';
+import { LiveObjects, LiveInspector, LiveOverlay, LiveModeToggle } from './live/LivePanels';
 import { useProject } from './hooks/useProject';
 import { useDevServer } from './hooks/useDevServer';
 import { useScene, TOOLS } from './hooks/useScene';
@@ -63,7 +63,7 @@ export default function App() {
     onForgeMessage: m => { if (LIVE_MODE) live.onBridgeMessage(m); },
   });
   const {
-    hierarchy, toolMode, saveStatus, saveBlocked, sceneStatus, createScene, problems, addPrimitive, dropAsset, setTool, toggleSnap, undo, redo, updateField, commitEdit, selectObject,
+    objectItems, reorderObject, updateMeta, toolMode, saveStatus, saveBlocked, sceneStatus, createScene, problems, addPrimitive, dropAsset, setTool, toggleSnap, undo, redo, updateField, commitEdit, selectObject,
     deleteObject, duplicateObject, renameObject, toggleVisible, toggleLocked, handleSave,
   } = scene;
 
@@ -114,7 +114,7 @@ export default function App() {
     if (file && rect) dropAsset(file, e.clientX - rect.left, e.clientY - rect.top);
   };
 
-  const handleDropOnHierarchy = (e: React.DragEvent) => {
+  const handleDropOnObjects = (e: React.DragEvent) => {
     const file = readDroppedAsset(e);
     if (file && ui.canEditScene) dropAsset(file);
   };
@@ -127,15 +127,15 @@ export default function App() {
   const canRedo = useHistory(s => s.future.length > 0);
 
   const dockCtx: DockCtx = {
-    hierarchy: (
+    objects: (
       <div className={`relative h-full ${isDraggingAsset ? 'ring-1 ring-inset ring-blue-600/40' : ''}`}
         onDragOver={isDraggingAsset ? e => e.preventDefault() : undefined}
-        onDrop={isDraggingAsset ? handleDropOnHierarchy : undefined}>
-        {liveUrl ? <LiveHierarchy live={live} /> : !ui.canvasAvailable ? (
+        onDrop={isDraggingAsset ? handleDropOnObjects : undefined}>
+        {liveUrl ? <LiveObjects live={live} /> : !ui.canvasAvailable ? (
           <Empty text={ui.mode === 'no-project' ? 'Open a project to see its objects.' : ui.mode === 'scene-blocked' ? 'The scene file could not be loaded.' : 'No scene selected.'} />
         ) : (
-          <HierarchyPanel
-            items={hierarchy} selectedId={selectedId}
+          <ObjectsPanel
+            items={objectItems} onReorder={reorderObject} selectedId={selectedId}
             onSelect={selectObject} onDelete={deleteObject}
             onDuplicate={duplicateObject} onRename={renameObject}
             onAddPrimitive={addPrimitive}
@@ -156,11 +156,11 @@ export default function App() {
     inspector: liveUrl ? <LiveInspector live={live} /> : !ui.canvasAvailable ? (
       <Empty text={ui.hasProject ? 'Select a scene to inspect its objects.' : 'Open a project to inspect objects.'} />
     ) : selectedId ? (
-      <Inspector selectedId={selectedId} onEdit={updateField} onCommit={commitEdit} onDelete={deleteObject} />
+      <Inspector selectedId={selectedId} onEdit={updateField} onMeta={updateMeta} onCommit={commitEdit} onDelete={deleteObject} />
     ) : (
       <div className="h-full flex flex-col items-center justify-center text-center p-6">
         <div className="text-5xl mb-4 opacity-20">🎯</div>
-        <p className="text-xs text-gray-500 leading-relaxed">Click an object in the viewport or hierarchy to inspect.</p>
+        <p className="text-xs text-gray-500 leading-relaxed">Click an object in the viewport or Objects panel to inspect.</p>
       </div>
     ),
     console: (

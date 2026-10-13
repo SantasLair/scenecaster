@@ -123,6 +123,29 @@ export function setName(id: string, name: string) {
   bump({ ...get().doc, objects: get().doc.objects.map(o => o.id === id ? { ...o, name } : o) });
 }
 
+/** Moves an object to `toIndex` and rewrites every depth to its list index (list order = z-order). Returns the previous objects. */
+export function reorderObject(id: string, toIndex: number): SceneObject[] | null {
+  const { doc } = get();
+  const from = doc.objects.findIndex(o => o.id === id);
+  if (from < 0) return null;
+  const objects = [...doc.objects];
+  objects.splice(toIndex, 0, objects.splice(from, 1)[0]);
+  setOrder(objects.map((o, i) => ({ ...o, depth: i })));
+  return doc.objects;
+}
+
+/** Replaces the object list (order and depths) and tells the viewport about changed depths. */
+export function setOrder(objects: SceneObject[]) {
+  const prev = new Map(get().doc.objects.map(o => [o.id, o.depth]));
+  for (const o of objects) if (prev.get(o.id) !== o.depth) sink({ type: 'SET_PROPERTIES', id: o.id, depth: o.depth });
+  bump({ ...get().doc, objects });
+}
+
+/** Neutral per-object fields that are not in the property table. */
+export function setMeta(id: string, meta: Partial<Pick<SceneObject, 'anchor' | 'interactive'>>) {
+  bump({ ...get().doc, objects: get().doc.objects.map(o => o.id === id ? { ...o, ...meta } : o) });
+}
+
 /** Changes properties in the model; `toView` also tells the viewport (false when the viewport made the change). */
 export function setProps(id: string, props: Partial<ObjectProps>, toView = true) {
   if (!objectById(id)) return;
