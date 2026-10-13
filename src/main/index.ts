@@ -16,8 +16,9 @@ const APP_ICON = path.join(app.getAppPath(), 'build', 'icon.png');
 
 let mainWin: BrowserWindow | null = null;
 let devProc: ChildProcess | null = null;
-/** Canonical (realpath) folder the user picked via `dialog:openFolder`; every path IPC is confined to it. */
-let openedFolder: string | null = null;
+/** Canonical (realpath) folders the user picked via `dialog:openFolder`; every path IPC is confined to them. A cancelled
+ * setup dialog must not lock the project that is still open, so earlier picks stay valid. */
+const openedRoots = new Set<string>();
 
 const isInside = (root: string, target: string) => {
   const rel = path.relative(root, target);
@@ -29,7 +30,7 @@ const isInside = (root: string, target: string) => {
  * ancestor) and returns it only if it lies inside the opened folder; otherwise null.
  */
 function guardPath(p: unknown): string | null {
-  if (!openedFolder || typeof p !== 'string' || !p || p.includes('\0')) return null;
+  if (openedRoots.size === 0 || typeof p !== 'string' || !p || p.includes('\0')) return null;
   let resolved = path.resolve(p);
   const rest: string[] = [];
   for (;;) {
@@ -45,7 +46,7 @@ function guardPath(p: unknown): string | null {
       resolved = parent;
     }
   }
-  return isInside(openedFolder, resolved) ? resolved : null;
+  return [...openedRoots].some(root => isInside(root, resolved)) ? resolved : null;
 }
 
 /** Guarded folder argument: must exist, be a directory, and be inside the opened folder. */
@@ -153,15 +154,17 @@ app.whenReady().then(() => {
     const picked = result.canceled ? null : result.filePaths[0] ?? null;
     if (!picked) return null;
     try {
-      openedFolder = fs.realpathSync.native(picked);
+      openedRoots.add(fs.realpathSync.native(picked));
     } catch {
       return null;
     }
-    return openedFolder;
+    // Return the path as picked: realpath turns a mapped drive into a UNC path, which cmd.exe rejects as a cwd.
+    return picked;
   });
 
   ipcMain.handle('devserver:start', (_e, folder: unknown, script?: unknown) => {
-    const cwd = guardFolder(folder);
+    // The checked folder is canonical (possibly UNC); run in the path the user gave, which passed the same check.
+    const cwd = guardFolder(folder) ? path.resolve(String(folder)) : null;
     if (!cwd) return { ok: false, error: 'Folder is not inside the opened project.' };
     const runScript = (typeof script === 'string' ? script.trim() : '') || 'dev';
     // The name reaches a shell on Windows, so it must be a plain script key declared by the project.
@@ -217,7 +220,7 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle('vscode:open', (_e, rawFolder: unknown) => {
-    const folder = guardFolder(rawFolder);
+    const folder = guardFolder(rawFolder) ? path.resolve(String(rawFolder)) : null;
     if (!folder) return;
     // `code` is a .cmd shim on Windows and needs a shell; quotes are safe there since paths can't contain them.
     spawn('code', [IS_WIN ? `"${folder}"` : folder], { shell: IS_WIN, detached: true, stdio: 'ignore' })
@@ -249,7 +252,10 @@ app.whenReady().then(() => {
   ipcMain.handle('fs:readAssets', (_e, rawFolder: unknown) => {
     const folder = guardFolder(rawFolder);
     if (!folder) return [];
-    const assetsDir = guardFolder(path.join(folder, 'assets'));
+    const assetsPath = path.join(folder, 'assets');
+    const assetsDir = guardFolder(assetsPath);
+    // An `assets` link that escapes the project means no assets, not a scan of the whole project.
+    if (!assetsDir && fs.existsSync(assetsPath)) return [];
     const root = assetsDir ?? folder;
     return scanAssets(root, root);
   });

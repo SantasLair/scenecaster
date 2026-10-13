@@ -37,7 +37,7 @@ export interface PropDescriptor<K extends PropKind = PropKind> {
 type AnyPropDescriptor = { [K in PropKind]: PropDescriptor<K> }[PropKind];
 
 export const round2 = (n: number) => Math.round(n * 100) / 100;
-const hexTint = (s: Sprite) => '#' + (s.tintTopLeft || 0xffffff).toString(16).padStart(6, '0');
+const hexTint = (s: Sprite) => '#' + (s.tintTopLeft ?? 0xffffff).toString(16).padStart(6, '0');
 
 /** THE property list. Order = inspector order. Adding a property = adding one entry here. */
 export const PROPS = {
