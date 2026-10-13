@@ -57,8 +57,8 @@ export function useScene({
   const pendingLoadFolderRef = useRef<string | null>(null);
 
   model.bindView(send, projectFolder);
-  const { objects, rev, savedRev, problems } = useSceneModel(useShallow(s => ({
-    objects: s.doc.objects, rev: s.rev, savedRev: s.savedRev, problems: s.problems,
+  const { objects, rev, savedRev, problems, blocked } = useSceneModel(useShallow(s => ({
+    objects: s.doc.objects, rev: s.rev, savedRev: s.savedRev, problems: s.problems, blocked: s.blocked,
   })));
   const saveStatus: SaveStatus = saving ? 'saving' : rev !== savedRev ? 'unsaved' : 'saved';
   const hierarchy: HierarchyItem[] = objects.map(o => ({
@@ -194,6 +194,12 @@ export function useScene({
 
   const handleSave = async () => {
     if (!projectFolder || readOnly) return;
+    if (useSceneModel.getState().blocked) {
+      appendLog(`
+[Not saved: the scene file could not be loaded, so saving would overwrite it. Fix the file and reopen the project.]
+`);
+      return showConsole();
+    }
     const { doc, rev: atRev } = useSceneModel.getState();
     setSaving(true);
     await saveSceneFiles(projectFolder, formatScene(doc), atRev);
@@ -204,11 +210,11 @@ export function useScene({
   const loadScene = async (folder: string) => {
     const r = await api.loadScene(folder, DEFAULT_SCENE);
     if (!r.ok) {
-      model.resetDoc(DEFAULT_SCENE);
-      return model.setProblems([{ level: 'error', message: r.error ?? 'Cannot read the scene file.' }]);
+      return model.blockDoc(DEFAULT_SCENE, [{ level: 'error', message: `${r.error ?? 'Cannot read the scene file.'} The file was left untouched and saving is disabled.` }]);
     }
     if (!r.found) return model.resetDoc(DEFAULT_SCENE);
-    const { doc, problems: found } = parseScene(r.data, DEFAULT_SCENE);
+    const { doc, problems: found, fatal } = parseScene(r.data, DEFAULT_SCENE);
+    if (fatal) return model.blockDoc(DEFAULT_SCENE, [...found, { level: 'error', message: 'The file was left untouched and saving is disabled.' }]);
     await model.loadDoc(doc, found);
   };
 
@@ -299,7 +305,7 @@ export function useScene({
   }, [iframeRef, onMessage, handleShortcut]);
 
   return {
-    hierarchy, toolMode, saveStatus, problems, addPrimitive, dropAsset,
+    hierarchy, toolMode, saveStatus, saveBlocked: blocked, problems, addPrimitive, dropAsset,
     setTool, toggleSnap, undo, redo, updateField, commitEdit, selectObject, deleteObject, duplicateObject,
     renameObject, toggleVisible, toggleLocked, handleSave, beginProject,
   };

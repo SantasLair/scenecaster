@@ -12,11 +12,13 @@ interface ModelState {
   /** The rev last written to disk successfully. */
   savedRev: number;
   problems: SceneProblem[];
+  /** The scene file on disk could not be read or understood: the (empty) scene must never be saved over it. */
+  blocked: boolean;
 }
 
 const emptyDoc = (key: string): SceneDoc => ({ version: SCENE_VERSION, key, overlay: false, objects: [] });
 
-export const useSceneModel = create<ModelState>(() => ({ doc: emptyDoc('main'), rev: 0, savedRev: 0, problems: [] }));
+export const useSceneModel = create<ModelState>(() => ({ doc: emptyDoc('main'), rev: 0, savedRev: 0, problems: [], blocked: false }));
 
 const get = () => useSceneModel.getState();
 const set = useSceneModel.setState;
@@ -63,20 +65,24 @@ const withTexture = (o: SceneObject): LoadSceneObject =>
 const bump = (doc: SceneDoc) => set(s => ({ doc, rev: s.rev + 1 }));
 
 /** Replaces the whole scene (open project, reload). Not a change: the result is saved state. */
-export async function loadDoc(doc: SceneDoc, problems: SceneProblem[]) {
+export async function loadDoc(doc: SceneDoc, problems: SceneProblem[], blocked = false) {
   await Promise.all(doc.objects.flatMap(o => o.kind === 'sprite' ? [loadTexture(o.asset)] : []));
   const missing = doc.objects.flatMap(o =>
     o.kind === 'sprite' && !textures.has(o.asset)
       ? [{ level: 'warning' as const, message: `"${o.name}": asset not found: ${o.asset}` }] : []);
-  set(s => ({ doc, rev: s.rev + 1, savedRev: s.rev + 1, problems: [...problems, ...missing] }));
+  set(s => ({ doc, rev: s.rev + 1, savedRev: s.rev + 1, problems: [...problems, ...missing], blocked }));
   pushAll();
 }
 
 export function resetDoc(key: string) {
-  set(s => ({ doc: emptyDoc(key), rev: s.rev + 1, savedRev: s.rev + 1, problems: [] }));
+  set(s => ({ doc: emptyDoc(key), rev: s.rev + 1, savedRev: s.rev + 1, problems: [], blocked: false }));
 }
 
-export function setProblems(problems: SceneProblem[]) { set({ problems }); }
+/** The file exists but cannot be used: show an empty scene, report why, and refuse to save. */
+export function blockDoc(key: string, problems: SceneProblem[]) {
+  set(s => ({ doc: emptyDoc(key), rev: s.rev + 1, savedRev: s.rev + 1, problems, blocked: true }));
+  pushAll();
+}
 
 /** Sends the current model to the viewport (after its iframe was recreated). */
 export function pushAll() {
