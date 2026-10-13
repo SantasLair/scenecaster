@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Scenecaster">
+  <title>Scenecaster</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1e293b"/>
+      <stop offset="1" stop-color="#0b0f19"/>
+    </linearGradient>
+    <linearGradient id="cast" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#38bdf8"/>
+      <stop offset="1" stop-color="#60a5fa"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="56" fill="url(#bg)"/>
+  <!-- scene canvas -->
+  <rect x="48" y="72" width="128" height="104" rx="10" fill="#0f172a" stroke="#334155" stroke-width="6"/>
+  <!-- object placed in the scene -->
+  <rect x="76" y="100" width="44" height="40" rx="6" fill="url(#cast)"/>
+  <!-- selection handles -->
+  <rect x="70" y="94" width="56" height="52" fill="none" stroke="#fbbf24" stroke-width="3" stroke-dasharray="6 4"/>
+  <g fill="#fbbf24">
+    <rect x="66" y="90" width="8" height="8"/><rect x="122" y="90" width="8" height="8"/>
+    <rect x="66" y="142" width="8" height="8"/><rect x="122" y="142" width="8" height="8"/>
+  </g>
+  <!-- cast arcs -->
+  <g fill="none" stroke="url(#cast)" stroke-width="10" stroke-linecap="round">
+    <path d="M190 120 a28 28 0 0 1 0 40"/>
+    <path d="M208 104 a52 52 0 0 1 0 72"/>
+  </g>
+</svg>
