@@ -16,9 +16,28 @@ import { LiveHierarchy, LiveInspector, LiveOverlay, LiveModeToggle } from './liv
 import { useProject } from './hooks/useProject';
 import { useDevServer } from './hooks/useDevServer';
 import { useScene, TOOLS } from './hooks/useScene';
+import { deriveUiState, type UiState } from './uiState';
 import type { AssetPayload, EditorToViewport } from '../../shared/protocol';
 
 const api = window.electronAPI;
+
+function Empty({ text }: { text: string }) {
+  return <div className="h-full flex items-center justify-center text-center p-6"><p className="text-xs text-gray-500 leading-relaxed">{text}</p></div>;
+}
+
+function ViewportPlaceholder({ ui, error, onOpenProject, onNewScene }: {
+  ui: UiState; error?: string; onOpenProject: () => void; onNewScene: () => void;
+}) {
+  const btn = 'mt-4 px-3 py-1.5 rounded text-xs border border-blue-600 bg-blue-900/40 text-blue-200 hover:bg-blue-800/60';
+  return (
+    <div className="h-full flex flex-col items-center justify-center text-center p-8 bg-gray-950">
+      {ui.mode === 'no-project' && <><h2 className="text-lg text-gray-200">Welcome to Scenecaster</h2><p className="text-xs text-gray-500 mt-2">Open a Phaser project folder to start.</p><button className={btn} onClick={onOpenProject}>Open Project</button></>}
+      {ui.mode === 'no-scene' && <><h2 className="text-lg text-gray-200">Select or create a scene</h2><p className="text-xs text-gray-500 mt-2">This project has no scene yet.</p><button className={btn} onClick={onNewScene}>New Scene</button></>}
+      {ui.mode === 'loading' && <p className="text-xs text-gray-500">Loading scene…</p>}
+      {ui.mode === 'scene-blocked' && <><h2 className="text-lg text-gray-200">Scene unavailable</h2><p className="text-xs text-red-400 mt-2 max-w-md">{error ?? 'The scene file could not be loaded.'}</p></>}
+    </div>
+  );
+}
 
 export default function App() {
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -43,7 +62,7 @@ export default function App() {
     onForgeMessage: m => { if (LIVE_MODE) live.onBridgeMessage(m); },
   });
   const {
-    hierarchy, toolMode, saveStatus, saveBlocked, problems, addPrimitive, dropAsset, setTool, toggleSnap, undo, redo, updateField, commitEdit, selectObject,
+    hierarchy, toolMode, saveStatus, saveBlocked, sceneStatus, createScene, problems, addPrimitive, dropAsset, setTool, toggleSnap, undo, redo, updateField, commitEdit, selectObject,
     deleteObject, duplicateObject, renameObject, toggleVisible, toggleLocked, handleSave,
   } = scene;
 
@@ -61,10 +80,8 @@ export default function App() {
   const openProject = async (folder: string, config: ProjectConfig, persisted: boolean) => {
     if (dev.status !== 'idle') await dev.stop();
     dev.loadScripts(folder, config.devScript);
-    const sizeChanged = config.canvasWidth !== canvasSize.w || config.canvasHeight !== canvasSize.h;
     project.open(folder, config, persisted);
-    // Otherwise the iframe reloads (new size or leaving live mode) and its SCENE_READY triggers the load.
-    scene.beginProject(folder, !sizeChanged && !liveUrl);
+    scene.beginProject(folder);
   };
   const handleOpenProject = () => project.choose(openProject);
   const handleSetupConfirm = (w: number, h: number) => project.confirmSetup(openProject, w, h);
@@ -84,13 +101,14 @@ export default function App() {
 
   const handleDropOnHierarchy = (e: React.DragEvent) => {
     const file = readDroppedAsset(e);
-    if (file) dropAsset(file);
+    if (file && ui.canEditScene) dropAsset(file);
   };
 
   const iframeSrc = liveUrl ?? `./phaser.html?w=${canvasSize.w}&h=${canvasSize.h}`;
   const { selectedId, snapEnabled } = useEditorStore(useShallow(s => ({ selectedId: s.selectedId, snapEnabled: s.snapEnabled })));
   const pastCount = useHistory(s => s.past.length);
   const canUndo = pastCount > 0;
+  const ui = deriveUiState({ projectFolder, sceneStatus, live: !!liveUrl });
   const canRedo = useHistory(s => s.future.length > 0);
 
   const dockCtx: DockCtx = {
@@ -98,7 +116,9 @@ export default function App() {
       <div className={`relative h-full ${isDraggingAsset ? 'ring-1 ring-inset ring-blue-600/40' : ''}`}
         onDragOver={isDraggingAsset ? e => e.preventDefault() : undefined}
         onDrop={isDraggingAsset ? handleDropOnHierarchy : undefined}>
-        {liveUrl ? <LiveHierarchy live={live} /> : (
+        {liveUrl ? <LiveHierarchy live={live} /> : !ui.canvasAvailable ? (
+          <Empty text={ui.mode === 'no-project' ? 'Open a project to see its objects.' : ui.mode === 'scene-blocked' ? 'The scene file could not be loaded.' : 'No scene selected.'} />
+        ) : (
           <HierarchyPanel
             items={hierarchy} selectedId={selectedId}
             onSelect={selectObject} onDelete={deleteObject}
@@ -118,7 +138,9 @@ export default function App() {
     assets: (
       <AssetBrowser projectFolder={projectFolder} onOpenProject={handleOpenProject} onDragAsset={() => setIsDraggingAsset(true)} />
     ),
-    inspector: liveUrl ? <LiveInspector live={live} /> : selectedId ? (
+    inspector: liveUrl ? <LiveInspector live={live} /> : !ui.canvasAvailable ? (
+      <Empty text={ui.hasProject ? 'Select a scene to inspect its objects.' : 'Open a project to inspect objects.'} />
+    ) : selectedId ? (
       <Inspector selectedId={selectedId} onEdit={updateField} onCommit={commitEdit} onDelete={deleteObject} />
     ) : (
       <div className="h-full flex flex-col items-center justify-center text-center p-6">
@@ -138,7 +160,7 @@ export default function App() {
           </>
         ) : (
           <p className="text-gray-700 text-center py-6">
-            {dev.status === 'idle' ? 'Press ▶ Run Game to start the dev server.' : 'Waiting for output…'}
+            {!ui.hasProject ? 'Open a project to run its game.' : dev.status === 'idle' ? 'Press ▶ Run Game to start the dev server.' : 'Waiting for output…'}
           </p>
         )}
       </div>
@@ -148,22 +170,27 @@ export default function App() {
     ) : <ProblemsPanel problems={problems} />,
     viewport: (
       <>
-        <iframe ref={iframeRef} src={iframeSrc} className="w-full h-full border-none" title="Phaser Viewport" />
+        {ui.canvasAvailable ? (
+          <iframe ref={iframeRef} src={iframeSrc} className="w-full h-full border-none" title="Phaser Viewport" />
+        ) : (
+          <ViewportPlaceholder ui={ui} error={problems.find(p => p.level === 'error')?.message}
+            onOpenProject={handleOpenProject} onNewScene={createScene} />
+        )}
         {isDraggingAsset && (
           <div className="absolute inset-0 z-10 cursor-copy" onDragOver={e => e.preventDefault()} onDrop={handleDropOnViewport}>
             <div className="absolute inset-0 border-2 border-dashed border-blue-500/40 pointer-events-none" />
           </div>
         )}
         {liveUrl && live.bridgeStatus === 'connected' && live.liveEditMode && !isDraggingAsset && <LiveOverlay live={live} />}
-        <div className="absolute top-3 left-3 flex items-center gap-2 pointer-events-none">
+        {ui.canvasAvailable && <div className="absolute top-3 left-3 flex items-center gap-2 pointer-events-none">
           {liveUrl ? (
             <span className="bg-green-900/90 text-green-300 text-xs px-2 py-1 rounded uppercase tracking-wider border border-green-700">LIVE</span>
           ) : (
             <span className="bg-gray-900/80 text-gray-300 text-xs px-2 py-1 rounded uppercase tracking-wider border border-gray-700">{toolMode}</span>
           )}
           {!liveUrl && snapEnabled && <span className="bg-blue-900/80 text-blue-300 text-xs px-2 py-1 rounded border border-blue-700">SNAP 32px</span>}
-        </div>
-        {!liveUrl && (
+        </div>}
+        {!liveUrl && ui.canvasAvailable && (
           <div className="absolute bottom-3 left-3 text-gray-700 text-[10px] pointer-events-none">
             Q·W·E·R = tools &nbsp;·&nbsp; Scroll = zoom &nbsp;·&nbsp; Middle mouse = pan &nbsp;·&nbsp; F = reset view &nbsp;·&nbsp; Del = delete
           </div>
@@ -197,26 +224,26 @@ export default function App() {
 
         <div className="flex items-center gap-0.5">
           {TOOLS.map(t => (
-            <ToolBtn key={t.mode} icon={t.icon} label={t.label} active={toolMode === t.mode} onClick={() => setTool(t.mode)} />
+            <ToolBtn key={t.mode} icon={t.icon} label={t.label} active={toolMode === t.mode} disabled={!ui.canEditScene} onClick={() => setTool(t.mode)} />
           ))}
         </div>
 
         <div className="w-px h-5 bg-gray-700 mx-1" />
 
-        <button onClick={toggleSnap} title="Snap to Grid"
+        <button onClick={toggleSnap} title="Snap to Grid" disabled={!ui.canEditScene}
           className={`flex items-center gap-1 px-2.5 py-1.5 rounded text-xs font-medium border transition-all ${
-            snapEnabled ? 'border-blue-500 bg-blue-900/40 text-blue-300' : 'border-gray-700 text-gray-400 hover:bg-gray-700'}`}>
+            snapEnabled ? 'border-blue-500 bg-blue-900/40 text-blue-300' : 'border-gray-700 text-gray-400 hover:bg-gray-700'} disabled:opacity-40 disabled:pointer-events-none`}>
           ⊞ <span className="hidden xl:inline">Snap</span>
         </button>
 
-        <button onClick={() => send({ type: 'RESET_CAMERA' })} title="Reset Camera View (F)"
-          className="flex items-center gap-1 px-2.5 py-1.5 rounded text-xs font-medium border border-gray-700 text-gray-400 hover:bg-gray-700 transition-all ml-0.5">
+        <button onClick={() => send({ type: 'RESET_CAMERA' })} title="Reset Camera View (F)" disabled={!ui.canEditScene}
+          className="flex items-center gap-1 px-2.5 py-1.5 rounded text-xs font-medium border border-gray-700 text-gray-400 hover:bg-gray-700 transition-all ml-0.5 disabled:opacity-40 disabled:pointer-events-none">
           ⌂ <span className="hidden xl:inline">Reset View</span>
         </button>
 
         <div className="flex items-center gap-0.5 ml-1">
-          <ToolBtn icon="↩" label="Undo" disabled={!canUndo || !!liveUrl} onClick={undo} />
-          <ToolBtn icon="↪" label="Redo" disabled={!canRedo || !!liveUrl} onClick={redo} />
+          <ToolBtn icon="↩" label="Undo" disabled={!canUndo || !ui.canEditScene} onClick={undo} />
+          <ToolBtn icon="↪" label="Redo" disabled={!canRedo || !ui.canEditScene} onClick={redo} />
         </div>
 
         <div className="flex-1" />
@@ -248,12 +275,12 @@ export default function App() {
           icon={dev.status === 'running' ? '⏹' : dev.status === 'starting' ? '⏳' : '▶'}
           label={dev.status === 'running' ? 'Stop' : dev.status === 'starting' ? 'Starting…' : 'Run Game'}
           onClick={handleRunStop}
-          disabled={!projectFolder || dev.status === 'starting'}
+          disabled={!ui.canRun || dev.status === 'starting'}
           extra={dev.status === 'running' ? 'text-red-400' : dev.status === 'error' ? 'text-orange-400' : 'text-green-400'}
         />
         {liveUrl && <LiveModeToggle live={live} />}
-        <ToolBtn icon="⌨" label="VS Code" onClick={() => projectFolder && api.openVSCode(projectFolder)} disabled={!projectFolder} />
-        <ToolBtn icon="💾" label="Save (Ctrl+S)" onClick={handleSave} disabled={!projectFolder || !!liveUrl || saveBlocked} />
+        <ToolBtn icon="⌨" label="VS Code" onClick={() => projectFolder && api.openVSCode(projectFolder)} disabled={!ui.canRun} />
+        <ToolBtn icon="💾" label="Save (Ctrl+S)" onClick={handleSave} disabled={!ui.canSave || saveBlocked} />
         <ToolBtn icon="▦" label="Reset layout" onClick={() => resetLayout(dockRef.current)} />
       </header>
 

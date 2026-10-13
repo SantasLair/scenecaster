@@ -14,11 +14,15 @@ interface ModelState {
   problems: SceneProblem[];
   /** The scene file on disk could not be read or understood: the (empty) scene must never be saved over it. */
   blocked: boolean;
+  /** none: the project has no scene file; loading: being read; open: editable; blocked: unreadable file. */
+  status: SceneStatus;
 }
+
+export type SceneStatus = 'none' | 'loading' | 'open' | 'blocked';
 
 const emptyDoc = (key: string): SceneDoc => ({ version: SCENE_VERSION, key, overlay: false, objects: [] });
 
-export const useSceneModel = create<ModelState>(() => ({ doc: emptyDoc('main'), rev: 0, savedRev: 0, problems: [], blocked: false }));
+export const useSceneModel = create<ModelState>(() => ({ doc: emptyDoc('main'), rev: 0, savedRev: 0, problems: [], blocked: false, status: 'none' }));
 
 const get = () => useSceneModel.getState();
 const set = useSceneModel.setState;
@@ -70,21 +74,24 @@ export async function loadDoc(doc: SceneDoc, problems: SceneProblem[], blocked =
   const missing = doc.objects.flatMap(o =>
     o.kind === 'sprite' && !textures.has(o.asset)
       ? [{ level: 'warning' as const, message: `"${o.name}": asset not found: ${o.asset}` }] : []);
-  set(s => ({ doc, rev: s.rev + 1, savedRev: s.rev + 1, problems: [...problems, ...missing], blocked }));
+  set(s => ({ doc, rev: s.rev + 1, savedRev: s.rev + 1, problems: [...problems, ...missing], blocked, status: blocked ? 'blocked' : 'open' }));
   pushAll();
 }
 
-export function resetDoc(key: string) {
-  set(s => ({ doc: emptyDoc(key), rev: s.rev + 1, savedRev: s.rev + 1, problems: [], blocked: false }));
+/** An empty scene: status 'none' when the project has no scene file, 'open' for a scene just created. */
+export function resetDoc(key: string, status: SceneStatus = 'none') {
+  set(s => ({ doc: emptyDoc(key), rev: s.rev + 1, savedRev: s.rev + 1, problems: [], blocked: false, status }));
 }
 
 /** The file exists but cannot be used: show an empty scene, report why, and refuse to save. */
 export function blockDoc(key: string, problems: SceneProblem[]) {
-  set(s => ({ doc: emptyDoc(key), rev: s.rev + 1, savedRev: s.rev + 1, problems, blocked: true }));
+  set(s => ({ doc: emptyDoc(key), rev: s.rev + 1, savedRev: s.rev + 1, problems, blocked: true, status: 'blocked' }));
   pushAll();
 }
 
 /** Sends the current model to the viewport (after its iframe was recreated). */
+export const setLoading = () => set({ status: 'loading' });
+
 export function pushAll() {
   sink({ type: 'LOAD_SCENE', objects: get().doc.objects.map(withTexture) });
 }

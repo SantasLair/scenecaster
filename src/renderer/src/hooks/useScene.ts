@@ -54,11 +54,10 @@ export function useScene({
   const [toolMode, setToolMode] = useState<ToolMode>('select');
   const [saving, setSaving] = useState(false);
   const [lockedIds, setLockedIds] = useState<string[]>([]);
-  const pendingLoadFolderRef = useRef<string | null>(null);
 
   model.bindView(send, projectFolder);
-  const { objects, rev, savedRev, problems, blocked } = useSceneModel(useShallow(s => ({
-    objects: s.doc.objects, rev: s.rev, savedRev: s.savedRev, problems: s.problems, blocked: s.blocked,
+  const { objects, rev, savedRev, problems, blocked, sceneStatus } = useSceneModel(useShallow(s => ({
+    objects: s.doc.objects, rev: s.rev, savedRev: s.savedRev, problems: s.problems, blocked: s.blocked, sceneStatus: s.status,
   })));
   const saveStatus: SaveStatus = saving ? 'saving' : rev !== savedRev ? 'unsaved' : 'saved';
   const hierarchy: HierarchyItem[] = objects.map(o => ({
@@ -193,7 +192,7 @@ export function useScene({
   };
 
   const handleSave = async () => {
-    if (!projectFolder || readOnly) return;
+    if (!projectFolder || readOnly || useSceneModel.getState().status === 'none') return;
     if (useSceneModel.getState().blocked) {
       appendLog(`
 [Not saved: the scene file could not be loaded, so saving would overwrite it. Fix the file and reopen the project.]
@@ -237,19 +236,27 @@ export function useScene({
     return api.onSceneChanged(() => { void reloadFromDisk.current(); });
   }, [projectFolder, reloadFromDisk]);
 
-  /** Clears the scene for a newly opened project. Without `resetViewport` the iframe reloads and its SCENE_READY triggers the load. */
-  const beginProject = (folder: string, resetViewport: boolean) => {
+  /** Clears the scene for a newly opened project and reads its scene file; the viewport exists only once a scene does. */
+  const beginProject = (folder: string) => {
     model.resetDoc(DEFAULT_SCENE);
+    model.setLoading();
     useEditorStore.getState().setSelectedObject(null);
     history.clear();
     gestureRef.current = null;
-    pendingLoadFolderRef.current = folder;
-    if (resetViewport) send({ type: 'RESET_SCENE' });
+    void loadScene(folder);
+  };
+
+  /** Creates the first scene (an empty file on disk) and opens it in the designer. */
+  const createScene = async () => {
+    if (!projectFolder) return;
+    model.resetDoc(DEFAULT_SCENE, 'open');
+    const { doc, rev: atRev } = useSceneModel.getState();
+    await saveSceneFiles(projectFolder, formatScene(doc), atRev);
   };
 
   /** Returns true when the key was an editor shortcut. */
   const handleShortcut = useLatest((k: ShortcutKey) => {
-    if (readOnly) return false;
+    if (readOnly || sceneStatus !== 'open') return false;
     const key = k.key.toLowerCase();
     if (k.ctrlKey || k.metaKey) {
       if (key === 's') handleSave();
@@ -279,10 +286,8 @@ export function useScene({
         send({ type: 'SET_TOOL_MODE', mode: toolMode });
         send({ type: 'SET_SNAP', enabled: useEditorStore.getState().snapEnabled });
         send({ type: 'SET_LOCKED_IDS', ids: lockedIds });
-        // A newly opened project reads the file; a recreated viewport just gets the model again, so unsaved edits survive.
-        const folder = pendingLoadFolderRef.current;
-        pendingLoadFolderRef.current = null;
-        if (folder) loadScene(folder); else model.pushAll();
+        // The viewport (re)appears: it gets the model, so unsaved edits survive a recreated iframe.
+        model.pushAll();
         break;
       }
       case 'OBJECT_SELECTED':
@@ -324,7 +329,7 @@ export function useScene({
   }, [iframeRef, onMessage, handleShortcut]);
 
   return {
-    hierarchy, toolMode, saveStatus, saveBlocked: blocked, problems, addPrimitive, dropAsset,
+    hierarchy, toolMode, saveStatus, saveBlocked: blocked, sceneStatus, createScene, problems, addPrimitive, dropAsset,
     setTool, toggleSnap, undo, redo, updateField, commitEdit, selectObject, deleteObject, duplicateObject,
     renameObject, toggleVisible, toggleLocked, handleSave, beginProject,
   };
