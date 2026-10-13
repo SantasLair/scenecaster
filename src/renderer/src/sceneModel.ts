@@ -85,13 +85,15 @@ export function pushAll() {
 
 export function markSaved(rev: number) { set({ savedRev: rev }); }
 
-export function insertObject(obj: SceneObject, index = get().doc.objects.length, select = true) {
+/** Inserts at `index` (default: the end); returns the index used. */
+export function insertObject(obj: SceneObject, index = get().doc.objects.length, select = true): number {
   const { doc } = get();
   const objects = [...doc.objects];
   objects.splice(index, 0, obj);
   bump({ ...doc, objects });
   const send = () => { if (objectById(obj.id)) sink({ type: 'ADD_OBJECT', object: withTexture(obj), select }); };
   if (obj.kind === 'sprite' && !textures.has(obj.asset)) void loadTexture(obj.asset).then(send); else send();
+  return index;
 }
 
 /** Removes an object; returns what is needed to put it back. */

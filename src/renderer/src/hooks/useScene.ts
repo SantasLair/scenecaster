@@ -3,14 +3,14 @@ import type React from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useEditorStore, ObjectProps } from '../store';
 import type { HierarchyItem } from '../components/HierarchyPanel';
-import { PROP_DEFAULTS } from '../../../shared/props';
-import { readWireProps } from '../../../shared/props';
+import { PROP_DEFAULTS, PROP_KEYS, pickProps, readWireProps } from '../../../shared/props';
 import { DEFAULT_SCENE } from '../../../shared/layout';
 import { formatScene, parseScene, newId, uniqueName } from '../../../shared/scene';
 import {
   isMessage, isForge, unhandled,
   type ToolMode, type SceneObject, type EditorToViewport, type BridgeToEditor, type Shape, type AssetPayload,
 } from '../../../shared/protocol';
+import * as history from '../history';
 import * as model from '../sceneModel';
 import { useSceneModel } from '../sceneModel';
 import { useLatest } from './useLatest';
@@ -78,48 +78,88 @@ export function useScene({
     useEditorStore.getState().toggleSnap();
   };
 
-  const applyHistory = (entry: { id: string; props: ObjectProps } | null) => {
-    if (!entry) return;
-    model.setProps(entry.id, entry.props);
+  /** Applies props to the model and the viewport, and to the inspector when the object is selected. */
+  const applyProps = (id: string, props: Partial<ObjectProps>) => {
+    model.setProps(id, props);
+    if (id === useEditorStore.getState().selectedId) useEditorStore.getState().updateProperties(props);
   };
-  const undo = () => applyHistory(useEditorStore.getState().undo());
-  const redo = () => applyHistory(useEditorStore.getState().redo());
+
+  /** Edits made one after another on one object (a drag, typing in a field) become a single undo step. */
+  const gestureRef = useRef<{ id: string; before: ObjectProps } | null>(null);
+  const beginGesture = (id: string) => {
+    if (gestureRef.current?.id === id) return;
+    commitEdit();
+    const o = model.objectById(id);
+    if (o) gestureRef.current = { id, before: pickProps(o) };
+  };
+  const commitEdit = () => {
+    const g = gestureRef.current;
+    gestureRef.current = null;
+    const o = g && model.objectById(g.id);
+    if (!g || !o) return;
+    const after = pickProps(o);
+    if (PROP_KEYS.every(k => after[k] === g.before[k])) return;
+    history.push({ undo: () => applyProps(g.id, g.before), redo: () => applyProps(g.id, after) });
+  };
+
+  const undo = () => { commitEdit(); history.undo(); };
+  const redo = () => { commitEdit(); history.redo(); };
 
   const updateField = (props: Partial<ObjectProps>, commit = false) => {
     const id = useEditorStore.getState().selectedId;
     if (!id) return;
-    useEditorStore.getState().updateProperties(props);
-    model.setProps(id, props);
-    if (commit) useEditorStore.getState().commit();
+    beginGesture(id);
+    applyProps(id, props);
+    if (commit) commitEdit();
   };
 
   const selectObject = (id: string) => send({ type: 'SELECT_OBJECT', id });
 
-  const deleteObject = (id: string) => { model.removeObject(id); };
+  const addObject = (obj: SceneObject) => {
+    commitEdit();
+    const index = model.insertObject(obj);
+    history.push({ undo: () => { model.removeObject(obj.id); }, redo: () => { model.insertObject(obj, index); } });
+  };
+
+  const deleteObject = (id: string) => {
+    commitEdit();
+    const removed = model.removeObject(id);
+    if (!removed) return;
+    history.push({
+      undo: () => { model.insertObject(removed.obj, removed.index); },
+      redo: () => { model.removeObject(id); },
+    });
+  };
 
   const duplicateObject = (id: string) => {
     const src = model.objectById(id);
     if (!src) return;
-    model.insertObject({ ...src, id: newId(), name: uniqueName(`${src.name} Copy`, objects.map(o => o.name)), x: src.x + 20, y: src.y + 20 });
+    addObject({ ...src, id: newId(), name: uniqueName(`${src.name} Copy`, objects.map(o => o.name)), x: src.x + 20, y: src.y + 20 });
   };
 
   const renameObject = (id: string, name: string) => {
-    const others = objects.filter(o => o.id !== id).map(o => o.name);
-    model.setName(id, uniqueName(name.trim() || 'Object', others));
+    const before = model.objectById(id)?.name;
+    const after = uniqueName(name.trim() || 'Object', objects.filter(o => o.id !== id).map(o => o.name));
+    if (before === undefined || before === after) return;
+    commitEdit();
+    model.setName(id, after);
+    history.push({ undo: () => model.setName(id, before), redo: () => model.setName(id, after) });
   };
 
   const toggleVisible = (id: string) => {
     const o = model.objectById(id);
     if (!o) return;
-    if (id === useEditorStore.getState().selectedId) return updateField({ visible: !o.visible }, true);
-    model.setProps(id, { visible: !o.visible });
+    commitEdit();
+    beginGesture(id);
+    applyProps(id, { visible: !o.visible });
+    commitEdit();
   };
 
   const toggleLocked = (id: string) =>
     setLockedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
 
   const addPrimitive = (shape: Shape) => {
-    model.insertObject({
+    addObject({
       id: newId(), name: uniqueName(SHAPE_NAMES[shape], objects.map(o => o.name)), parentId: null, kind: 'primitive', shape,
       ...PROP_DEFAULTS, x: canvasSize.w / 2, y: canvasSize.h / 2,
     });
@@ -127,10 +167,12 @@ export function useScene({
 
   const addSprite = (file: AssetPayload, at?: { x: number; y: number }) => {
     const asset = file.fullPath ? model.relativeAsset(file.fullPath) : null;
-    if (!asset) return appendLog(`\n[Cannot add "${file.name}": it is outside the project folder.]\n`);
+    if (!asset) return appendLog(`
+[Cannot add "${file.name}": it is outside the project folder.]
+`);
     model.primeTexture(asset, file.dataUrl);
-    model.insertObject({
-      id: newId(), name: uniqueName(file.name.replace(/\.[^.]+$/, ''), objects.map(o => o.name)), parentId: null,
+    addObject({
+      id: newId(), name: uniqueName(file.name.replace(/.[^.]+$/, ''), objects.map(o => o.name)), parentId: null,
       kind: 'sprite', asset, ...PROP_DEFAULTS, x: at?.x ?? canvasSize.w / 2, y: at?.y ?? canvasSize.h / 2,
     });
   };
@@ -174,7 +216,8 @@ export function useScene({
   const beginProject = (folder: string, resetViewport: boolean) => {
     model.resetDoc(DEFAULT_SCENE);
     useEditorStore.getState().setSelectedObject(null);
-    useEditorStore.setState({ past: [], future: [] });
+    history.clear();
+    gestureRef.current = null;
     pendingLoadFolderRef.current = folder;
     if (resetViewport) send({ type: 'RESET_SCENE' });
   };
@@ -224,11 +267,12 @@ export function useScene({
         useEditorStore.getState().setSelectedObject(null);
         break;
       case 'OBJECT_TRANSFORMED':
+        beginGesture(m.id);
         model.setProps(m.id, readWireProps(m), false);
         if (m.id === useEditorStore.getState().selectedId) useEditorStore.getState().updateProperties(readWireProps(m));
         break;
       case 'PUSH_HISTORY':
-        useEditorStore.getState().commit();
+        commitEdit();
         break;
       case 'DROP_LOCATED':
         addSprite(m.file, { x: m.x, y: m.y });
@@ -256,7 +300,7 @@ export function useScene({
 
   return {
     hierarchy, toolMode, saveStatus, problems, addPrimitive, dropAsset,
-    setTool, toggleSnap, undo, redo, updateField, selectObject, deleteObject, duplicateObject,
+    setTool, toggleSnap, undo, redo, updateField, commitEdit, selectObject, deleteObject, duplicateObject,
     renameObject, toggleVisible, toggleLocked, handleSave, beginProject,
   };
 }

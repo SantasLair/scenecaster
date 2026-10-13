@@ -66,7 +66,7 @@ Effort: **S** (under a day) · **M** (a few days) · **L** (a week or more).
 
 ### Phase 1 — A scene file you and an AI can both trust
 - [x] **M** Scene model in the renderer; Phaser is a view (architecture item 5)
-- [ ] **M** Command-based history; add/delete/duplicate/rename become undoable
+- [x] **M** Command-based history; add/delete/duplicate/rename become undoable
 - [x] **S** Move scene storage to `scenecaster/scenes/<name>.scene.json`
 - [ ] **S** **Naming:** the folder name is one constant in the editor. *(Partial: constant is `src/shared/layout.ts`; generated docs not started.)* `MIGRATE.md`, `check.mjs`, the README and the `CLAUDE.md` pointer are generated from it, so a future rename is a one-line change. The folder is a normal (not hidden) directory, because many search tools skip dot-folders.
 - [x] **S** AI-friendly format: relative asset paths, `version`, unique readable `name` per object, UUID `id` kept, `parentId`, stable key order, one object per few lines for clean diffs
