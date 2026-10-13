@@ -1,29 +1,28 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Scenecaster">
   <title>Scenecaster</title>
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#1e293b"/>
-      <stop offset="1" stop-color="#0b0f19"/>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#14213d"/>
+      <stop offset="1" stop-color="#070b16"/>
     </linearGradient>
-    <linearGradient id="cast" x1="0" y1="1" x2="1" y2="0">
-      <stop offset="0" stop-color="#38bdf8"/>
-      <stop offset="1" stop-color="#60a5fa"/>
+    <linearGradient id="phaser" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#00f0ff"/>
+      <stop offset="1" stop-color="#0a84ff"/>
     </linearGradient>
   </defs>
   <rect width="256" height="256" rx="56" fill="url(#bg)"/>
-  <!-- scene canvas -->
-  <rect x="48" y="72" width="128" height="104" rx="10" fill="#0f172a" stroke="#334155" stroke-width="6"/>
-  <!-- object placed in the scene -->
-  <rect x="76" y="100" width="44" height="40" rx="6" fill="url(#cast)"/>
-  <!-- selection handles -->
-  <rect x="70" y="94" width="56" height="52" fill="none" stroke="#fbbf24" stroke-width="3" stroke-dasharray="6 4"/>
-  <g fill="#fbbf24">
-    <rect x="66" y="90" width="8" height="8"/><rect x="122" y="90" width="8" height="8"/>
-    <rect x="66" y="142" width="8" height="8"/><rect x="122" y="142" width="8" height="8"/>
+  <!-- scene frame: corner brackets -->
+  <g fill="none" stroke="#e8f4ff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M52 92 V60 a8 8 0 0 1 8-8 H92"/>
+    <path d="M164 52 H196 a8 8 0 0 1 8 8 V92"/>
+    <path d="M204 164 V196 a8 8 0 0 1-8 8 H164"/>
+    <path d="M92 204 H60 a8 8 0 0 1-8-8 V164"/>
   </g>
-  <!-- cast arcs -->
-  <g fill="none" stroke="url(#cast)" stroke-width="10" stroke-linecap="round">
-    <path d="M190 120 a28 28 0 0 1 0 40"/>
-    <path d="M208 104 a52 52 0 0 1 0 72"/>
+  <!-- placed object -->
+  <rect x="98" y="98" width="60" height="60" rx="10" fill="url(#phaser)"/>
+  <!-- move gizmo: x and y axes from the object -->
+  <g stroke="#e8f4ff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M166 128 H190 M182 120 l8 8-8 8"/>
+    <path d="M128 90 V66 M120 74 l8-8 8 8"/>
   </g>
 </svg>
