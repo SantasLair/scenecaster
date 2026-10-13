@@ -272,8 +272,8 @@ export default function App() {
   const handleRunStop = async () => {
     if (devStatus === 'running' || devStatus === 'starting') return stopDev();
     if (!projectFolder) return;
-    // Starting the game replaces the editor scene, so persist unsaved work first.
-    if (saveStatus === 'unsaved') handleSave();
+    // Starting the game replaces the editor scene; never save implicitly, ask instead.
+    if (saveStatus === 'unsaved' && !window.confirm('This scene has unsaved changes and running the game will discard them. Run anyway?')) return;
     setDevStatus('starting');
     setDevLogs('');
     showConsole();
