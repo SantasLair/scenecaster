@@ -23,11 +23,7 @@ interface ProjectConfig {
   devScript?: string;
 }
 
-interface SavedScene {
-  version: number;
-  /** Cast at the disk boundary; not validated on load yet. */
-  objects: import('../../shared/protocol').SceneObject[];
-}
+type LoadedScene = IpcResult & { found?: boolean; data?: unknown };
 
 type IpcResult = { ok: boolean; error?: string };
 
@@ -38,8 +34,8 @@ interface ElectronAPI {
   readProjectConfig: (folder: string) => Promise<ProjectConfig | null>;
   writeProjectConfig: (folder: string, cfg: ProjectConfig) => Promise<IpcResult>;
   readProjectScripts: (folder: string) => Promise<string[]>;
-  saveScene: (folder: string, name: string, objects: object[]) => Promise<IpcResult>;
-  loadScene: (folder: string, name: string) => Promise<SavedScene | null>;
+  saveScene: (folder: string, name: string, text: string) => Promise<IpcResult>;
+  loadScene: (folder: string, name: string) => Promise<LoadedScene>;
   startDevServer: (folder: string, script?: string) => Promise<IpcResult & { url?: string }>;
   stopDevServer: () => Promise<IpcResult>;
   onDevServerOutput: (cb: (text: string) => void) => void;

@@ -14,7 +14,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   readProjectScripts: (folder: string) => ipcRenderer.invoke('project:readScripts', folder),
 
   // Scene
-  saveScene: (folder: string, name: string, objects: object[]) => ipcRenderer.invoke('scene:save', folder, name, objects),
+  saveScene: (folder: string, name: string, text: string) => ipcRenderer.invoke('scene:save', folder, name, text),
   loadScene: (folder: string, name: string) => ipcRenderer.invoke('scene:load', folder, name),
 
   // Dev server

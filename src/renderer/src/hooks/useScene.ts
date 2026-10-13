@@ -1,13 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
 import type React from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useEditorStore, ObjectProps } from '../store';
 import type { HierarchyItem } from '../components/HierarchyPanel';
+import { PROP_DEFAULTS } from '../../../shared/props';
 import { readWireProps } from '../../../shared/props';
 import { DEFAULT_SCENE } from '../../../shared/layout';
+import { formatScene, parseScene, newId, uniqueName } from '../../../shared/scene';
 import {
   isMessage, isForge, unhandled,
-  type ToolMode, type SceneObject, type EditorToViewport, type BridgeToEditor,
+  type ToolMode, type SceneObject, type EditorToViewport, type BridgeToEditor, type Shape, type AssetPayload,
 } from '../../../shared/protocol';
+import * as model from '../sceneModel';
+import { useSceneModel } from '../sceneModel';
 import { useLatest } from './useLatest';
 
 type ShortcutKey = Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey' | 'shiftKey'>;
@@ -22,6 +27,8 @@ export const TOOLS: { mode: ToolMode; icon: string; label: string; key: string }
   { mode: 'scale', icon: '⤢', label: 'Scale (R)', key: 'r' },
 ];
 
+const SHAPE_NAMES: Record<Shape, string> = { rect: 'Rectangle', circle: 'Circle', triangle: 'Triangle' };
+
 const isTyping = (t: EventTarget | null) =>
   t instanceof HTMLInputElement || t instanceof HTMLSelectElement || t instanceof HTMLTextAreaElement;
 
@@ -30,6 +37,7 @@ interface Options {
   send: (msg: EditorToViewport) => void;
   projectFolder: string | null;
   devScript: string;
+  canvasSize: { w: number; h: number };
   ensureConfigPersisted: (folder: string, devScript: string) => Promise<IpcResult>;
   appendLog: (text: string) => void;
   showConsole: () => void;
@@ -39,24 +47,26 @@ interface Options {
   onForgeMessage: (m: BridgeToEditor) => void;
 }
 
-/** The scene being edited: hierarchy, tool, dirty/save state, undo/redo, and the viewport message protocol. */
+/** The scene being edited: tool, save state, undo/redo, and the viewport message protocol. The objects live in sceneModel. */
 export function useScene({
-  iframeRef, send, projectFolder, devScript, ensureConfigPersisted, appendLog, showConsole, readOnly, onForgeMessage,
+  iframeRef, send, projectFolder, devScript, canvasSize, ensureConfigPersisted, appendLog, showConsole, readOnly, onForgeMessage,
 }: Options) {
-  const [hierarchy, setHierarchy] = useState<HierarchyItem[]>([]);
   const [toolMode, setToolMode] = useState<ToolMode>('select');
-  const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
-  const pendingSaveRef = useRef(false);
+  const [saving, setSaving] = useState(false);
+  const [lockedIds, setLockedIds] = useState<string[]>([]);
   const pendingLoadFolderRef = useRef<string | null>(null);
 
-  const markDirty = () => setSaveStatus('unsaved');
-  const patchItem = (id: string, patch: Partial<HierarchyItem>) =>
-    setHierarchy(prev => prev.map(i => i.id === id ? { ...i, ...patch } : i));
+  model.bindView(send, projectFolder);
+  const { objects, rev, savedRev, problems } = useSceneModel(useShallow(s => ({
+    objects: s.doc.objects, rev: s.rev, savedRev: s.savedRev, problems: s.problems,
+  })));
+  const saveStatus: SaveStatus = saving ? 'saving' : rev !== savedRev ? 'unsaved' : 'saved';
+  const hierarchy: HierarchyItem[] = objects.map(o => ({
+    id: o.id, name: o.name, type: o.kind === 'sprite' ? 'Sprite' : SHAPE_NAMES[o.shape],
+    visible: o.visible, locked: lockedIds.includes(o.id),
+  }));
 
-  const lockedKey = hierarchy.filter(i => i.locked).map(i => i.id).join('\n');
-  useEffect(() => {
-    send({ type: 'SET_LOCKED_IDS', ids: lockedKey ? lockedKey.split('\n') : [] });
-  }, [lockedKey, send]);
+  useEffect(() => { send({ type: 'SET_LOCKED_IDS', ids: lockedIds }); }, [lockedIds, send]);
 
   const setTool = (mode: ToolMode) => {
     setToolMode(mode);
@@ -70,9 +80,7 @@ export function useScene({
 
   const applyHistory = (entry: { id: string; props: ObjectProps } | null) => {
     if (!entry) return;
-    send({ type: 'SET_PROPERTIES', id: entry.id, ...entry.props });
-    patchItem(entry.id, { visible: entry.props.visible });
-    markDirty();
+    model.setProps(entry.id, entry.props);
   };
   const undo = () => applyHistory(useEditorStore.getState().undo());
   const redo = () => applyHistory(useEditorStore.getState().redo());
@@ -81,71 +89,90 @@ export function useScene({
     const id = useEditorStore.getState().selectedId;
     if (!id) return;
     useEditorStore.getState().updateProperties(props);
-    send({ type: 'SET_PROPERTIES', id, ...props });
-    if (props.visible !== undefined) patchItem(id, { visible: props.visible });
+    model.setProps(id, props);
     if (commit) useEditorStore.getState().commit();
-    markDirty();
   };
 
   const selectObject = (id: string) => send({ type: 'SELECT_OBJECT', id });
 
-  const deleteObject = (id: string) => {
-    send({ type: 'DELETE_OBJECT', id });
-    setHierarchy(prev => prev.filter(i => i.id !== id));
-    markDirty();
+  const deleteObject = (id: string) => { model.removeObject(id); };
+
+  const duplicateObject = (id: string) => {
+    const src = model.objectById(id);
+    if (!src) return;
+    model.insertObject({ ...src, id: newId(), name: uniqueName(`${src.name} Copy`, objects.map(o => o.name)), x: src.x + 20, y: src.y + 20 });
   };
 
-  const duplicateObject = (id: string) =>
-    send({ type: 'DUPLICATE_OBJECT', id, newId: `${id.replace(/_copy_\d+$/, '')}_copy_${Date.now()}` });
-
   const renameObject = (id: string, name: string) => {
-    send({ type: 'RENAME_OBJECT', id, name });
-    patchItem(id, { name });
-    markDirty();
+    const others = objects.filter(o => o.id !== id).map(o => o.name);
+    model.setName(id, uniqueName(name.trim() || 'Object', others));
   };
 
   const toggleVisible = (id: string) => {
-    const item = hierarchy.find(i => i.id === id);
-    if (!item) return;
-    const visible = !item.visible;
-    if (id === useEditorStore.getState().selectedId) return updateField({ visible }, true);
-    send({ type: 'SET_PROPERTIES', id, visible });
-    patchItem(id, { visible });
-    markDirty();
+    const o = model.objectById(id);
+    if (!o) return;
+    if (id === useEditorStore.getState().selectedId) return updateField({ visible: !o.visible }, true);
+    model.setProps(id, { visible: !o.visible });
   };
 
   const toggleLocked = (id: string) =>
-    setHierarchy(prev => prev.map(i => i.id === id ? { ...i, locked: !i.locked } : i));
+    setLockedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
 
-  const handleSave = () => {
-    if (!projectFolder || readOnly) return;
-    pendingSaveRef.current = true;
-    send({ type: 'GET_SCENE_STATE' });
+  const addPrimitive = (shape: Shape) => {
+    model.insertObject({
+      id: newId(), name: uniqueName(SHAPE_NAMES[shape], objects.map(o => o.name)), parentId: null, kind: 'primitive', shape,
+      ...PROP_DEFAULTS, x: canvasSize.w / 2, y: canvasSize.h / 2,
+    });
+  };
+
+  const addSprite = (file: AssetPayload, at?: { x: number; y: number }) => {
+    const asset = file.fullPath ? model.relativeAsset(file.fullPath) : null;
+    if (!asset) return appendLog(`\n[Cannot add "${file.name}": it is outside the project folder.]\n`);
+    model.primeTexture(asset, file.dataUrl);
+    model.insertObject({
+      id: newId(), name: uniqueName(file.name.replace(/\.[^.]+$/, ''), objects.map(o => o.name)), parentId: null,
+      kind: 'sprite', asset, ...PROP_DEFAULTS, x: at?.x ?? canvasSize.w / 2, y: at?.y ?? canvasSize.h / 2,
+    });
+  };
+
+  /** Drop at iframe pixels: the viewport converts them to scene coordinates and answers with DROP_LOCATED. */
+  const dropAsset = (file: AssetPayload, screenX?: number, screenY?: number) => {
+    if (screenX === undefined || screenY === undefined) addSprite(file);
+    else send({ type: 'LOCATE_DROP', file, screenX, screenY });
   };
 
   /** A failed save keeps the scene dirty and says why; the previous good file is never replaced by a partial one. */
-  const saveSceneFiles = async (folder: string, objects: SceneObject[]) => {
-    const fail = (error?: string) => { setSaveStatus('unsaved'); appendLog(`\n[Save failed: ${error ?? 'Unknown error'}]\n`); showConsole(); };
+  const saveSceneFiles = async (folder: string, text: string, atRev: number) => {
+    const fail = (error?: string) => { appendLog(`\n[Save failed: ${error ?? 'Unknown error'}]\n`); showConsole(); };
     const cfg = await ensureConfigPersisted(folder, devScript);
     if (!cfg.ok) return fail(cfg.error);
-    const r = await api.saveScene(folder, DEFAULT_SCENE, objects);
-    if (r.ok) setSaveStatus('saved'); else fail(r.error);
+    const r = await api.saveScene(folder, DEFAULT_SCENE, text);
+    if (r.ok) model.markSaved(atRev); else fail(r.error);
   };
 
+  const handleSave = async () => {
+    if (!projectFolder || readOnly) return;
+    const { doc, rev: atRev } = useSceneModel.getState();
+    setSaving(true);
+    await saveSceneFiles(projectFolder, formatScene(doc), atRev);
+    setSaving(false);
+  };
+
+  /** Reads and validates the scene file; the report ends up in the model's problems. */
   const loadScene = async (folder: string) => {
-    const data = await api.loadScene(folder, DEFAULT_SCENE);
-    setSaveStatus('saved');
-    if (!data?.objects?.length) return;
-    const objects = await Promise.all(data.objects.map(async obj =>
-      obj.kind === 'sprite' && obj.assetFullPath
-        ? { ...obj, dataUrl: (await api.fileToDataUrl(obj.assetFullPath)) ?? '' }
-        : obj));
-    send({ type: 'LOAD_SCENE', objects });
+    const r = await api.loadScene(folder, DEFAULT_SCENE);
+    if (!r.ok) {
+      model.resetDoc(DEFAULT_SCENE);
+      return model.setProblems([{ level: 'error', message: r.error ?? 'Cannot read the scene file.' }]);
+    }
+    if (!r.found) return model.resetDoc(DEFAULT_SCENE);
+    const { doc, problems: found } = parseScene(r.data, DEFAULT_SCENE);
+    await model.loadDoc(doc, found);
   };
 
   /** Clears the scene for a newly opened project. Without `resetViewport` the iframe reloads and its SCENE_READY triggers the load. */
   const beginProject = (folder: string, resetViewport: boolean) => {
-    setHierarchy([]);
+    model.resetDoc(DEFAULT_SCENE);
     useEditorStore.getState().setSelectedObject(null);
     useEditorStore.setState({ past: [], future: [] });
     pendingLoadFolderRef.current = folder;
@@ -181,13 +208,13 @@ export function useScene({
         handleShortcut.current(m);
         break;
       case 'SCENE_READY': {
-        setHierarchy([]);
         send({ type: 'SET_TOOL_MODE', mode: toolMode });
         send({ type: 'SET_SNAP', enabled: useEditorStore.getState().snapEnabled });
-        // Also reload after the iframe is swapped back from a running game, which resets the scene.
-        const folder = pendingLoadFolderRef.current ?? projectFolder;
+        send({ type: 'SET_LOCKED_IDS', ids: lockedIds });
+        // A newly opened project reads the file; a recreated viewport just gets the model again, so unsaved edits survive.
+        const folder = pendingLoadFolderRef.current;
         pendingLoadFolderRef.current = null;
-        if (folder) loadScene(folder);
+        if (folder) loadScene(folder); else model.pushAll();
         break;
       }
       case 'OBJECT_SELECTED':
@@ -197,21 +224,14 @@ export function useScene({
         useEditorStore.getState().setSelectedObject(null);
         break;
       case 'OBJECT_TRANSFORMED':
+        model.setProps(m.id, readWireProps(m), false);
         if (m.id === useEditorStore.getState().selectedId) useEditorStore.getState().updateProperties(readWireProps(m));
         break;
       case 'PUSH_HISTORY':
         useEditorStore.getState().commit();
-        markDirty();
         break;
-      case 'OBJECT_ADDED':
-        setHierarchy(prev => [...prev, { id: m.id, name: m.name, type: m.objType, visible: m.visible ?? true, locked: false }]);
-        if (!m.loaded) markDirty();
-        break;
-      case 'SCENE_STATE':
-        if (!pendingSaveRef.current || !projectFolder) break;
-        pendingSaveRef.current = false;
-        setSaveStatus('saving');
-        saveSceneFiles(projectFolder, m.objects);
+      case 'DROP_LOCATED':
+        addSprite(m.file, { x: m.x, y: m.y });
         break;
       default: unhandled(m);
     }
@@ -235,7 +255,7 @@ export function useScene({
   }, [iframeRef, onMessage, handleShortcut]);
 
   return {
-    hierarchy, toolMode, saveStatus,
+    hierarchy, toolMode, saveStatus, problems, addPrimitive, dropAsset,
     setTool, toggleSnap, undo, redo, updateField, selectObject, deleteObject, duplicateObject,
     renameObject, toggleVisible, toggleLocked, handleSave, beginProject,
   };

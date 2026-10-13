@@ -6,11 +6,13 @@ export type { ObjectProps, LiveProp };
 export type ToolMode = 'select' | 'move' | 'rotate' | 'scale';
 export type Shape = 'rect' | 'circle' | 'triangle';
 
-/** Per-object metadata kept by the viewport and persisted in forge-scene.json. */
-export type SceneObjectMeta =
-  | { kind: 'primitive'; name: string; shape: Shape }
-  | { kind: 'sprite'; name: string; assetName: string; assetFullPath: string };
-export type SceneObject = { id: string } & SceneObjectMeta & ObjectProps;
+/** An object as stored in a scene file.  is a path relative to the project folder, forward slashes. */
+export type SceneObjectMeta = { id: string; name: string; parentId: string | null } & (
+  | { kind: 'primitive'; shape: Shape }
+  | { kind: 'sprite'; asset: string }
+);
+export type SceneObject = SceneObjectMeta & ObjectProps;
+/** What the viewport needs to draw an object; `dataUrl` is the texture of a sprite. */
 export type LoadSceneObject = SceneObject & { dataUrl?: string };
 
 /** Asset Browser drag payload ('application/phaser-asset'): AssetFile + dataUrl. */
@@ -27,13 +29,10 @@ export type EditorToViewport =
   | { type: 'SELECT_OBJECT'; id: string }
   | ({ type: 'SET_PROPERTIES'; id: string } & Partial<ObjectProps>)
   | { type: 'DELETE_OBJECT'; id: string }
-  | { type: 'DUPLICATE_OBJECT'; id: string; newId: string }
-  | { type: 'RENAME_OBJECT'; id: string; name: string }
-  | { type: 'GET_SCENE_STATE' }
   | { type: 'LOAD_SCENE'; objects: LoadSceneObject[] }
-  | { type: 'ADD_PRIMITIVE'; shape: Shape }
-  /** screenX/screenY are iframe pixels; omitted = canvas center. */
-  | { type: 'ADD_SPRITE_FROM_ASSET'; file: AssetPayload; screenX?: number; screenY?: number };
+  | { type: 'ADD_OBJECT'; object: LoadSceneObject; select: boolean }
+  /** Asks where a drop at iframe pixels lands in the scene; answered with DROP_LOCATED. */
+  | { type: 'LOCATE_DROP'; file: AssetPayload; screenX: number; screenY: number };
 
 // ---- Viewport -> editor
 export type ViewportToEditor =
@@ -44,8 +43,7 @@ export type ViewportToEditor =
   | ({ type: 'OBJECT_TRANSFORMED'; id: string } & Pick<ObjectProps, 'x' | 'y'>
       & Partial<Pick<ObjectProps, 'rotation' | 'scaleX' | 'scaleY'>>)
   | { type: 'PUSH_HISTORY' }
-  | { type: 'OBJECT_ADDED'; id: string; name: string; objType: string; visible: boolean; loaded: boolean }
-  | { type: 'SCENE_STATE'; objects: SceneObject[] };
+  | { type: 'DROP_LOCATED'; file: AssetPayload; x: number; y: number };
 
 // ---- Live bridge, v0.3 (src/bridge/phaser-forge-bridge.js).
 // The bridge .d.ts ships into user projects and cannot import this file; keep the two in sync by hand.
