@@ -53,6 +53,14 @@ export function useDevServer({ projectFolder, persistDevScript, showConsole }: O
     setUrl(null);
   };
 
+  /** Back to the no-project state: server stopped, console and script list emptied. */
+  const reset = async () => {
+    await stop();
+    setLogs('');
+    setScripts([]);
+    setSelectedScript('dev');
+  };
+
   /** Stops a running server, else starts one. `confirmStart` can veto the start (e.g. unsaved changes). */
   const runStop = async (confirmStart?: () => boolean) => {
     if (status === 'running' || status === 'starting') return stop();
@@ -73,6 +81,6 @@ export function useDevServer({ projectFolder, persistDevScript, showConsole }: O
 
   return {
     status, url, logs, scripts, selectedScript, consoleEndRef,
-    appendLog, clearLogs, loadScripts, changeScript, stop, runStop,
+    appendLog, clearLogs, loadScripts, changeScript, stop, reset, runStop,
   };
 }

@@ -256,6 +256,14 @@ app.whenReady().then(() => {
     return root;
   });
 
+  ipcMain.handle('dialog:unsaved', async (_e, message: unknown) => {
+    const r = await dialog.showMessageBox(mainWin!, {
+      type: 'warning', title: 'Unsaved changes', message: String(message),
+      buttons: ['Save', 'Discard', 'Cancel'], defaultId: 0, cancelId: 2, noLink: true,
+    });
+    return (['save', 'discard', 'cancel'] as const)[r.response];
+  });
+
   ipcMain.handle('devserver:start', (_e, folder: unknown, script?: unknown) => {
     // The checked folder is canonical (possibly UNC); run in the path the user gave, which passed the same check.
     const cwd = guardFolder(folder) ? path.resolve(String(folder)) : null;

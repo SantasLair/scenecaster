@@ -2,6 +2,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type React from 'react';
 import { useEditorStore } from './store';
+import { useSceneModel } from './sceneModel';
 import { useHistory } from './history';
 import HierarchyPanel from './components/HierarchyPanel';
 import AssetBrowser from './components/AssetBrowser';
@@ -84,6 +85,20 @@ export default function App() {
     scene.beginProject(folder);
   };
   const handleOpenProject = () => project.choose(openProject);
+  const handleCloseProject = async () => {
+    if (!projectFolder) return;
+    if (!liveUrl && saveStatus === 'unsaved') {
+      const choice = await api.confirmUnsaved('This scene has unsaved changes. Save before closing the project?');
+      if (choice === 'cancel') return;
+      if (choice === 'save') {
+        await handleSave();
+        if (useSceneModel.getState().rev !== useSceneModel.getState().savedRev) return;
+      }
+    }
+    await dev.reset();
+    scene.endProject();
+    project.close();
+  };
   const handleSetupConfirm = (w: number, h: number) => project.confirmSetup(openProject, w, h);
 
   const readDroppedAsset = (e: React.DragEvent): AssetPayload | null => {
@@ -219,6 +234,9 @@ export default function App() {
             {canvasSize.w}×{canvasSize.h}
           </span>
         )}
+
+        {projectFolder && <button onClick={handleCloseProject} title="Close Project"
+          className="px-2 py-1.5 rounded text-xs text-gray-400 hover:bg-gray-700 hover:text-white border border-gray-700 mr-1">✕ <span className="hidden xl:inline">Close</span></button>}
 
         <div className="w-px h-5 bg-gray-700 mr-1" />
 
