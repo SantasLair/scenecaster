@@ -37,6 +37,8 @@ function guardPath(p: unknown): string | null {
       resolved = path.join(fs.realpathSync.native(resolved), ...rest);
       break;
     } catch {
+      // Something exists here but can't be resolved (a dangling symlink/junction): writing through it would escape.
+      try { fs.lstatSync(resolved); return null; } catch { /* genuinely missing: fall through to the parent */ }
       const parent = path.dirname(resolved);
       if (parent === resolved) return null;
       rest.unshift(path.basename(resolved));
