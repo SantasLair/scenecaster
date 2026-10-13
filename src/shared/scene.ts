@@ -45,20 +45,21 @@ export function formatScene(doc: SceneDoc): string {
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 
 /** Never throws. Bad objects are skipped and reported; missing props take defaults. */
-export function parseScene(raw: unknown, expectedKey: string): { doc: SceneDoc; problems: SceneProblem[] } {
+/** `fatal`: the file could not be understood at all; the returned doc is empty and must never be saved over the file. */
+export function parseScene(raw: unknown, expectedKey: string): { doc: SceneDoc; problems: SceneProblem[]; fatal: boolean } {
   const problems: SceneProblem[] = [];
   const err = (message: string) => problems.push({ level: 'error', message });
   const warn = (message: string) => problems.push({ level: 'warning', message });
   const doc: SceneDoc = { version: SCENE_VERSION, key: expectedKey, overlay: false, objects: [] };
 
-  if (!isRecord(raw)) { err('Scene file is not a JSON object.'); return { doc, problems }; }
+  if (!isRecord(raw)) { err('Scene file is not a JSON object.'); return { doc, problems, fatal: true }; }
   if (raw.version !== SCENE_VERSION) {
     err(`Unsupported scene version ${JSON.stringify(raw.version)} (expected ${SCENE_VERSION}); nothing was loaded.`);
-    return { doc, problems };
+    return { doc, problems, fatal: true };
   }
   if (raw.key !== expectedKey) warn(`Scene key ${JSON.stringify(raw.key)} does not match the file name "${expectedKey}"; using "${expectedKey}".`);
   doc.overlay = raw.overlay === true;
-  if (!Array.isArray(raw.objects)) { err('"objects" must be an array.'); return { doc, problems }; }
+  if (!Array.isArray(raw.objects)) { err('"objects" must be an array.'); return { doc, problems, fatal: true }; }
 
   const ids = new Set<string>();
   const names = new Set<string>();
@@ -98,5 +99,5 @@ export function parseScene(raw: unknown, expectedKey: string): { doc: SceneDoc; 
   for (const o of doc.objects) {
     if (o.parentId && !ids.has(o.parentId)) warn(`"${o.name}": parentId ${o.parentId} does not exist.`);
   }
-  return { doc, problems };
+  return { doc, problems, fatal: false };
 }

@@ -48,7 +48,7 @@ export default function App() {
     onForgeMessage: m => { if (LIVE_MODE) live.onBridgeMessage(m); },
   });
   const {
-    hierarchy, toolMode, saveStatus, problems, addPrimitive, dropAsset, setTool, toggleSnap, undo, redo, updateField, commitEdit, selectObject,
+    hierarchy, toolMode, saveStatus, saveBlocked, problems, addPrimitive, dropAsset, setTool, toggleSnap, undo, redo, updateField, commitEdit, selectObject,
     deleteObject, duplicateObject, renameObject, toggleVisible, toggleLocked, handleSave,
   } = scene;
 
@@ -191,7 +191,7 @@ export default function App() {
         />
         {liveUrl && <LiveModeToggle live={live} />}
         <ToolBtn icon="⌨" label="VS Code" onClick={() => projectFolder && api.openVSCode(projectFolder)} disabled={!projectFolder} />
-        <ToolBtn icon="💾" label="Save (Ctrl+S)" onClick={handleSave} disabled={!projectFolder || !!liveUrl} />
+        <ToolBtn icon="💾" label="Save (Ctrl+S)" onClick={handleSave} disabled={!projectFolder || !!liveUrl || saveBlocked} />
       </header>
 
       <div className="flex flex-1 overflow-hidden">
