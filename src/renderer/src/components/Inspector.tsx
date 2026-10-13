@@ -61,14 +61,16 @@ const SECTION_EXTRAS: Partial<Record<PropSection, (p: ObjectProps, onEdit: OnEdi
 };
 
 /** Design-mode inspector, driven by the property table in src/shared/props.ts. */
-export default function Inspector({ selectedId, onEdit, onDelete }: {
+export default function Inspector({ selectedId, onEdit, onCommit, onDelete }: {
+  /** Called when an edit gesture ends (blur, Enter, toggle): one undo step. */
   selectedId: string;
   onEdit: OnEdit;
+  onCommit: () => void;
   onDelete: (id: string) => void;
 }) {
   const props = useEditorStore(useShallow(pickProps));
   const { texW, texH } = useEditorStore(useShallow(s => ({ texW: s.texW, texH: s.texH })));
-  const commit = useEditorStore.getState().commit;
+  const commit = onCommit;
 
   const field = (k: PropKey) => {
     const { kind, ui } = describe(k);

@@ -2,6 +2,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useEffect, useRef, useState } from 'react';
 import type React from 'react';
 import { useEditorStore } from './store';
+import { useHistory } from './history';
 import HierarchyPanel from './components/HierarchyPanel';
 import AssetBrowser from './components/AssetBrowser';
 import Inspector from './components/Inspector';
@@ -47,7 +48,7 @@ export default function App() {
     onForgeMessage: m => { if (LIVE_MODE) live.onBridgeMessage(m); },
   });
   const {
-    hierarchy, toolMode, saveStatus, problems, addPrimitive, dropAsset, setTool, toggleSnap, undo, redo, updateField, selectObject,
+    hierarchy, toolMode, saveStatus, problems, addPrimitive, dropAsset, setTool, toggleSnap, undo, redo, updateField, commitEdit, selectObject,
     deleteObject, duplicateObject, renameObject, toggleVisible, toggleLocked, handleSave,
   } = scene;
 
@@ -105,9 +106,9 @@ export default function App() {
 
   const iframeSrc = liveUrl ?? `./phaser.html?w=${canvasSize.w}&h=${canvasSize.h}`;
   const { selectedId, snapEnabled } = useEditorStore(useShallow(s => ({ selectedId: s.selectedId, snapEnabled: s.snapEnabled })));
-  const pastCount = useEditorStore(s => s.past.length);
+  const pastCount = useHistory(s => s.past.length);
   const canUndo = pastCount > 0;
-  const canRedo = useEditorStore(s => s.future.length > 0);
+  const canRedo = useHistory(s => s.future.length > 0);
 
   return (
     <div className="flex h-screen w-screen flex-col bg-gray-900 text-white select-none overflow-hidden">
@@ -263,7 +264,7 @@ export default function App() {
           {liveUrl ? (
             <LiveInspector live={live} />
           ) : selectedId ? (
-            <Inspector selectedId={selectedId} onEdit={updateField} onDelete={deleteObject} />
+            <Inspector selectedId={selectedId} onEdit={updateField} onCommit={commitEdit} onDelete={deleteObject} />
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center text-center p-6">
               <div className="text-5xl mb-4 opacity-20">🎯</div>
