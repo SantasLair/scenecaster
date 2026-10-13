@@ -56,7 +56,7 @@ export default function App() {
   const live = useLiveBridge({ liveUrl, iframeRef, projectFolder, appendLog: dev.appendLog, showConsole });
   const send: (msg: EditorToViewport) => void = live.postToIframe;
   const scene = useScene({
-    iframeRef, send, projectFolder, devScript: dev.selectedScript, canvasSize,
+    iframeRef, send, projectFolder, devScript: dev.selectedScript, canvasSize, engine: project.engine,
     ensureConfigPersisted: project.ensureConfigPersisted,
     appendLog: dev.appendLog, showConsole,
     readOnly: !!liveUrl,
@@ -156,7 +156,7 @@ export default function App() {
     inspector: liveUrl ? <LiveInspector live={live} /> : !ui.canvasAvailable ? (
       <Empty text={ui.hasProject ? 'Select a scene to inspect its objects.' : 'Open a project to inspect objects.'} />
     ) : selectedId ? (
-      <Inspector selectedId={selectedId} onEdit={updateField} onMeta={updateMeta} onCommit={commitEdit} onDelete={deleteObject} />
+      <Inspector engine={project.engine} selectedId={selectedId} onEdit={updateField} onMeta={updateMeta} onCommit={commitEdit} onDelete={deleteObject} />
     ) : (
       <div className="h-full flex flex-col items-center justify-center text-center p-6">
         <div className="text-5xl mb-4 opacity-20">🎯</div>

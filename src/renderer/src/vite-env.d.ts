@@ -21,6 +21,7 @@ interface ProjectConfig {
   canvasWidth: number;
   canvasHeight: number;
   devScript?: string;
+  engine: import('../../shared/props').EngineId;
 }
 
 type LoadedScene = IpcResult & { found?: boolean; data?: unknown };

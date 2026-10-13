@@ -3,6 +3,12 @@
 import type * as Phaser from 'phaser';
 type Sprite = Phaser.GameObjects.Sprite;
 
+/** Engine profiles. Phaser is the only one; a profile is its label plus the descriptors tagged with its id. */
+export type EngineId = 'phaser';
+export const ENGINES: Record<EngineId, { label: string }> = { phaser: { label: 'Phaser' } };
+export const DEFAULT_ENGINE: EngineId = 'phaser';
+export const isEngine = (v: unknown): v is EngineId => typeof v === 'string' && Object.prototype.hasOwnProperty.call(ENGINES, v);
+
 export type PropKind = 'number' | 'boolean' | 'color';
 type KindValue = { number: number; boolean: boolean; color: string };
 
@@ -29,8 +35,8 @@ export interface PropDescriptor<K extends PropKind = PropKind> {
   round?: boolean;
   /** Editable in live mode via FORGE_SET_PROP (must match bridge SETTABLE_PROPS + depth). */
   live?: boolean;
-  /** Engine-specific: saved under the scene file's `phaser` object, never in the neutral core. */
-  engine?: 'phaser';
+  /** Engine extension field: saved under the scene file's object named after the engine, never in the neutral core. Untagged = core. */
+  engine?: EngineId;
   /** Defaults: read/assign sprite[key]. Method syntax on purpose (bivariant params). */
   get?(s: Sprite): KindValue[K];
   set?(s: Sprite, v: KindValue[K]): void;
@@ -76,6 +82,11 @@ export type LiveProp = { [K in PropKey]: (typeof PROPS)[K] extends { live: true 
 export const PROP_KEYS = Object.keys(PROPS) as PropKey[];
 export const describe = (k: PropKey): PropDescriptor => PROPS[k];
 export const PROP_DEFAULTS = Object.fromEntries(PROP_KEYS.map(k => [k, PROPS[k].default])) as ObjectProps;
+
+/** The extension fields of an engine profile (type, default, label come from their descriptors). */
+export const extensionKeys = (engine: EngineId): PropKey[] => PROP_KEYS.filter(k => describe(k).engine === engine);
+/** Core fields plus the given engine's extension fields: what the inspector and the scene file use for that engine. */
+export const profileKeys = (engine: EngineId): PropKey[] => PROP_KEYS.filter(k => !describe(k).engine || describe(k).engine === engine);
 
 export const pickProps = (s: ObjectProps): ObjectProps =>
   Object.fromEntries(PROP_KEYS.map(k => [k, s[k]])) as ObjectProps;
