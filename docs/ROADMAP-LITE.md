@@ -57,12 +57,12 @@ The roadmap is checked against the games in `E:\Gen-AI-Games\phaser-prototypes` 
 Effort: **S** (under a day) · **M** (a few days) · **L** (a week or more).
 
 ### Phase 0 — Foundation (from the architecture plan)
-- [ ] **S** Script-name allowlist for `devserver:start` (command injection)
-- [ ] **M** Main validates every path against the opened project folder. This is the enforcement point for principle 5: writes are allowed only under `scenecaster/` and the assets folder.
-- [ ] **S** Check `ev.source` on `message` events (editor ↔ its own Phaser iframe)
-- [ ] **S** Fix `npm install` ERESOLVE (pin vite 7, or wait for a compatible electron-vite)
-- [ ] **M** Typed `protocol.ts` plus a single property-descriptor table
-- [ ] **S** Store selectors
+- [x] **S** Script-name allowlist for `devserver:start` (command injection)
+- [x] **M** Main validates every path against the opened project folder. This is the enforcement point for principle 5: writes are allowed only under `scenecaster/` and the assets folder.
+- [x] **S** Check `ev.source` on `message` events (editor ↔ its own Phaser iframe)
+- [x] **S** Fix `npm install` ERESOLVE (pin vite 7, or wait for a compatible electron-vite)
+- [x] **M** Typed `protocol.ts` plus a single property-descriptor table
+- [x] **S** Store selectors
 
 ### Phase 1 — A scene file you and an AI can both trust
 - [ ] **M** Scene model in the renderer; Phaser is a view (architecture item 5)

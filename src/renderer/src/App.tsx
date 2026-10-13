@@ -1,28 +1,24 @@
-import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
+import { useShallow } from 'zustand/react/shallow';
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
 import type React from 'react';
 import { useEditorStore, ObjectProps } from './store';
 import HierarchyPanel, { HierarchyItem } from './components/HierarchyPanel';
 import AssetBrowser from './components/AssetBrowser';
-import { InspectorField, ToolBtn, PresetButton, SetupDialog } from './components/Controls';
+import Inspector from './components/Inspector';
+import { InspectorField, ToolBtn, SetupDialog } from './components/Controls';
 import { beginDrag, clamp } from './beginDrag';
+import { readWireProps, round2 } from '../../shared/props';
+import {
+  isMessage, isForge, unhandled,
+  type ToolMode, type LiveProp, type BridgeObject, type ScreenRect, type BridgeScene, type AssetPayload,
+  type EditorToViewport, type EditorToBridge, type BridgeToEditor, type Forge,
+} from '../../shared/protocol';
 
-type ToolMode = 'select' | 'move' | 'rotate' | 'scale';
 type DevStatus = 'idle' | 'starting' | 'running' | 'error';
 type BridgeStatus = 'disconnected' | 'connecting' | 'connected';
-type LiveProp = 'x' | 'y' | 'rotation' | 'scaleX' | 'scaleY' | 'alpha' | 'visible' | 'depth';
-
-interface BridgeObject {
-  id: string; name: string; type: string;
-  x: number; y: number; rotation: number; scaleX: number; scaleY: number;
-  alpha: number; visible: boolean; depth: number; originX: number; originY: number;
-  textureKey?: string; text?: string; displayWidth?: number; displayHeight?: number;
-}
-interface ScreenRect { x: number; y: number; width: number; height: number; }
-interface BridgeScene { key: string; active: boolean; visible: boolean; }
 type ShortcutKey = Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey' | 'shiftKey'>;
 
 const api = window.electronAPI;
-const round2 = (n: number) => Math.round(n * 100) / 100;
 // Game objects are rarely named, so fall back to their text or texture before the generated id.
 const liveLabel = (o: BridgeObject) =>
   o.name || (o.text !== undefined ? `"${o.text.replace(/\s+/g, ' ')}"` : o.textureKey) || o.id;
@@ -39,12 +35,6 @@ const TOOLS: { mode: ToolMode; icon: string; label: string; key: string }[] = [
   { mode: 'rotate', icon: '↻', label: 'Rotate (E)', key: 'e' },
   { mode: 'scale', icon: '⤢', label: 'Scale (R)', key: 'r' },
 ];
-const ORIGIN_PRESETS = [
-  { l: 'TL', x: 0, y: 0 }, { l: 'TC', x: 0.5, y: 0 }, { l: 'TR', x: 1, y: 0 },
-  { l: 'CL', x: 0, y: 0.5 }, { l: 'C', x: 0.5, y: 0.5 }, { l: 'CR', x: 1, y: 0.5 },
-  { l: 'BL', x: 0, y: 1 }, { l: 'BC', x: 0.5, y: 1 }, { l: 'BR', x: 1, y: 1 },
-];
-const SCROLL_PRESETS = [{ l: 'UI (0)', v: 0 }, { l: 'World (1)', v: 1 }];
 
 /** Ref that always holds the latest value, so long-lived listeners never see stale state. */
 function useLatest<T>(value: T) {
@@ -60,7 +50,6 @@ export default function App() {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const consoleEndRef = useRef<HTMLDivElement>(null);
-  const store = useEditorStore();
 
   const [hierarchy, setHierarchy] = useState<HierarchyItem[]>([]);
   const [toolMode, setToolMode] = useState<ToolMode>('select');
@@ -102,8 +91,20 @@ export default function App() {
     moved: boolean;
   } | null>(null);
 
-  const send = useCallback((msg: object) => iframeRef.current?.contentWindow?.postMessage(msg, '*'), []);
-  const sendBridge = useCallback((msg: object) => send({ forge: true, ...msg }), [send]);
+  // Target origin for outgoing posts: the dev game's origin when live, else the editor's own origin
+  // (phaser.html is same-origin). Under file:// the origin is opaque ('null'), so '*' is unavoidable there.
+  const targetOrigin = useMemo(() => {
+    try {
+      const o = new URL(devUrl ?? window.location.href).origin;
+      return o === 'null' ? '*' : o;
+    } catch { return '*'; }
+  }, [devUrl]);
+  const postToIframe = useCallback(
+    (msg: EditorToViewport | Forge<EditorToBridge>) => iframeRef.current?.contentWindow?.postMessage(msg, targetOrigin),
+    [targetOrigin],
+  );
+  const send: (msg: EditorToViewport) => void = postToIframe;
+  const sendBridge = useCallback((msg: EditorToBridge) => postToIframe({ forge: true, ...msg }), [postToIframe]);
   const requestBridgeObjects = useCallback((sceneKey: string) => sendBridge({ type: 'FORGE_GET_OBJECTS', sceneKey }), [sendBridge]);
   const appendLog = useCallback((text: string) => setDevLogs(prev => prev + text), []);
   const markDirty = () => setSaveStatus('unsaved');
@@ -158,8 +159,8 @@ export default function App() {
   };
 
   const toggleSnap = () => {
-    send({ type: 'SET_SNAP', enabled: !store.snapEnabled });
-    store.toggleSnap();
+    send({ type: 'SET_SNAP', enabled: !useEditorStore.getState().snapEnabled });
+    useEditorStore.getState().toggleSnap();
   };
 
   const applyHistory = (entry: { id: string; props: ObjectProps } | null) => {
@@ -168,16 +169,16 @@ export default function App() {
     patchItem(entry.id, { visible: entry.props.visible });
     markDirty();
   };
-  const undo = () => applyHistory(store.undo());
-  const redo = () => applyHistory(store.redo());
+  const undo = () => applyHistory(useEditorStore.getState().undo());
+  const redo = () => applyHistory(useEditorStore.getState().redo());
 
   const updateField = (props: Partial<ObjectProps>, commit = false) => {
-    const id = store.selectedId;
+    const id = useEditorStore.getState().selectedId;
     if (!id) return;
-    store.updateProperties(props);
+    useEditorStore.getState().updateProperties(props);
     send({ type: 'SET_PROPERTIES', id, ...props });
     if (props.visible !== undefined) patchItem(id, { visible: props.visible });
-    if (commit) store.commit();
+    if (commit) useEditorStore.getState().commit();
     markDirty();
   };
 
@@ -202,7 +203,7 @@ export default function App() {
     const item = hierarchy.find(i => i.id === id);
     if (!item) return;
     const visible = !item.visible;
-    if (id === store.selectedId) return updateField({ visible }, true);
+    if (id === useEditorStore.getState().selectedId) return updateField({ visible }, true);
     send({ type: 'SET_PROPERTIES', id, visible });
     patchItem(id, { visible });
     markDirty();
@@ -288,7 +289,7 @@ export default function App() {
     setProjectFolder(folder);
     setCanvasSize({ w: config.canvasWidth, h: config.canvasHeight });
     setHierarchy([]);
-    store.setSelectedObject(null);
+    useEditorStore.getState().setSelectedObject(null);
     useEditorStore.setState({ past: [], future: [] });
     pendingLoadFolderRef.current = folder;
     // Otherwise the iframe reloads (new size or leaving live mode) and its SCENE_READY triggers the load.
@@ -313,7 +314,7 @@ export default function App() {
     openProject(folder, config);
   };
 
-  const readDroppedAsset = (e: React.DragEvent) => {
+  const readDroppedAsset = (e: React.DragEvent): AssetPayload | null => {
     e.preventDefault();
     setIsDraggingAsset(false);
     const raw = e.dataTransfer.getData('application/phaser-asset');
@@ -398,7 +399,7 @@ export default function App() {
     if (drag.moved && activeBridgeScene) requestBridgeObjects(activeBridgeScene);
   };
 
-  const onBridgeMessage = (m: any) => {
+  const onBridgeMessage = (m: BridgeToEditor) => {
     switch (m.type) {
       case 'FORGE_READY':
       case 'FORGE_PONG':
@@ -439,6 +440,7 @@ export default function App() {
         if (sceneKey) requestBridgeObjects(sceneKey);
         break;
       }
+      default: unhandled(m);
     }
   };
 
@@ -456,15 +458,16 @@ export default function App() {
     const tool = TOOLS.find(t => t.key === key);
     if (tool) setTool(tool.mode);
     else if (key === 'f') send({ type: 'RESET_CAMERA' });
-    else if (key === 'delete' && store.selectedId) deleteObject(store.selectedId);
+    else if (key === 'delete' && useEditorStore.getState().selectedId) deleteObject(useEditorStore.getState().selectedId!);
     else if (key === 'escape') send({ type: 'DESELECT_ALL' });
     else return false;
     return true;
   });
 
-  const onMessage = useLatest((m: any) => {
-    if (!m?.type) return;
-    if (m.forge) return onBridgeMessage(m);
+  const onMessage = useLatest((data: unknown) => {
+    if (!isMessage(data)) return;
+    if (isForge(data)) return onBridgeMessage(data);
+    const m = data;
     switch (m.type) {
       case 'KEYDOWN':
         handleShortcut.current(m);
@@ -472,7 +475,7 @@ export default function App() {
       case 'SCENE_READY': {
         setHierarchy([]);
         send({ type: 'SET_TOOL_MODE', mode: toolMode });
-        send({ type: 'SET_SNAP', enabled: store.snapEnabled });
+        send({ type: 'SET_SNAP', enabled: useEditorStore.getState().snapEnabled });
         // Also reload after the iframe is swapped back from a running game, which resets the scene.
         const folder = pendingLoadFolderRef.current ?? projectFolder;
         pendingLoadFolderRef.current = null;
@@ -480,29 +483,16 @@ export default function App() {
         break;
       }
       case 'OBJECT_SELECTED':
-        store.setSelectedObject(m.id, {
-          x: round2(m.x), y: round2(m.y), rotation: round2(m.rotation),
-          scaleX: round2(m.scaleX), scaleY: round2(m.scaleY), alpha: round2(m.alpha),
-          tint: m.tint, visible: m.visible, depth: m.depth,
-          originX: round2(m.originX), originY: round2(m.originY),
-          flipX: m.flipX, flipY: m.flipY,
-          scrollFactorX: m.scrollFactorX, scrollFactorY: m.scrollFactorY,
-        }, m.texW, m.texH);
+        useEditorStore.getState().setSelectedObject(m.id, readWireProps(m), m.texW, m.texH);
         break;
       case 'OBJECT_DESELECTED':
-        store.setSelectedObject(null);
+        useEditorStore.getState().setSelectedObject(null);
         break;
-      case 'OBJECT_TRANSFORMED': {
-        if (m.id !== store.selectedId) break;
-        const props: Partial<ObjectProps> = {};
-        for (const k of ['x', 'y', 'rotation', 'scaleX', 'scaleY'] as const) {
-          if (m[k] !== undefined) props[k] = round2(m[k]);
-        }
-        store.updateProperties(props);
+      case 'OBJECT_TRANSFORMED':
+        if (m.id === useEditorStore.getState().selectedId) useEditorStore.getState().updateProperties(readWireProps(m));
         break;
-      }
       case 'PUSH_HISTORY':
-        store.commit();
+        useEditorStore.getState().commit();
         markDirty();
         break;
       case 'OBJECT_ADDED':
@@ -515,11 +505,16 @@ export default function App() {
         setSaveStatus('saving');
         api.saveScene(projectFolder, m.objects).then(ok => setSaveStatus(ok ? 'saved' : 'unsaved'));
         break;
+      default: unhandled(m);
     }
   });
 
   useEffect(() => {
-    const handleMessage = (ev: MessageEvent) => onMessage.current(ev.data);
+    const handleMessage = (ev: MessageEvent) => {
+      // The viewport iframe (editor Phaser view or the dev game) is the only legitimate sender.
+      if (ev.source !== iframeRef.current?.contentWindow) return;
+      onMessage.current(ev.data);
+    };
     const handleKey = (ev: KeyboardEvent) => {
       if (!isTyping(ev.target) && handleShortcut.current(ev)) ev.preventDefault();
     };
@@ -547,8 +542,10 @@ export default function App() {
   };
 
   const iframeSrc = devUrl ?? `./phaser.html?w=${canvasSize.w}&h=${canvasSize.h}`;
-  const { selectedId, x, y, rotation, scaleX, scaleY, alpha, tint, visible, depth, originX, originY, flipX, flipY, scrollFactorX, scrollFactorY, texW, texH, snapEnabled, past, future } = store;
-  const commit = store.commit;
+  const { selectedId, snapEnabled } = useEditorStore(useShallow(s => ({ selectedId: s.selectedId, snapEnabled: s.snapEnabled })));
+  const pastCount = useEditorStore(s => s.past.length);
+  const canUndo = pastCount > 0;
+  const canRedo = useEditorStore(s => s.future.length > 0);
 
   return (
     <div className="flex h-screen w-screen flex-col bg-gray-900 text-white select-none overflow-hidden">
@@ -593,12 +590,12 @@ export default function App() {
         </button>
 
         <div className="flex items-center gap-0.5 ml-1">
-          <ToolBtn icon="↩" label="Undo" disabled={past.length === 0 || !!devUrl} onClick={undo} />
-          <ToolBtn icon="↪" label="Redo" disabled={future.length === 0 || !!devUrl} onClick={redo} />
+          <ToolBtn icon="↩" label="Undo" disabled={!canUndo || !!devUrl} onClick={undo} />
+          <ToolBtn icon="↪" label="Redo" disabled={!canRedo || !!devUrl} onClick={redo} />
         </div>
 
         <div className="flex-1" />
-        {past.length > 0 && <span className="text-xs text-gray-700 hidden xl:block mr-2">{past.length} action{past.length !== 1 ? 's' : ''}</span>}
+        {pastCount > 0 && <span className="text-xs text-gray-700 hidden xl:block mr-2">{pastCount} action{pastCount !== 1 ? 's' : ''}</span>}
         {projectFolder && !devUrl && (
           <span className={`text-[10px] hidden xl:block ${saveStatus === 'unsaved' ? 'text-yellow-600' : saveStatus === 'saving' ? 'text-gray-500' : 'text-gray-700'}`}>
             {saveStatus === 'saving' ? 'saving…' : saveStatus}
@@ -726,7 +723,7 @@ export default function App() {
         <div onMouseDown={e => startSideResize(e, 'hierarchy')}
           className="w-1 flex-shrink-0 cursor-ew-resize hover:bg-blue-500 transition-colors bg-transparent" />
 
-        <main className="flex-1 bg-[#0a0f1a] relative overflow-hidden">
+        <main className="flex-1 bg-[#1e1e1e] relative overflow-hidden">
           <iframe ref={iframeRef} src={iframeSrc} className="w-full h-full border-none" title="Phaser Viewport" />
 
           {isDraggingAsset && (
@@ -829,87 +826,7 @@ export default function App() {
               </div>
             )
           ) : selectedId ? (
-            <div className="p-3 space-y-4 text-sm">
-              <div className="bg-gray-900 rounded px-3 py-2">
-                <div className="text-[10px] text-gray-500 mb-0.5">ID</div>
-                <div className="text-xs text-white font-mono truncate">{selectedId}</div>
-              </div>
-              <section>
-                <div className="section-label mb-2">Position</div>
-                <InspectorField label="X" value={x} step={1} onChange={v => updateField({ x: v })} onCommit={commit} />
-                <InspectorField label="Y" value={y} step={1} onChange={v => updateField({ y: v })} onCommit={commit} />
-              </section>
-              <section>
-                <div className="section-label mb-2">Rotation</div>
-                <InspectorField label="Angle (rad)" value={rotation} onChange={v => updateField({ rotation: v })} onCommit={commit} />
-                <div className="text-[10px] text-gray-600 text-right -mt-1">{Math.round((rotation * 180) / Math.PI)}°</div>
-              </section>
-              <section>
-                <div className="section-label mb-2">Scale</div>
-                <InspectorField label="Scale X" value={scaleX} min={0} onChange={v => updateField({ scaleX: v })} onCommit={commit} />
-                <InspectorField label="Scale Y" value={scaleY} min={0} onChange={v => updateField({ scaleY: v })} onCommit={commit} />
-              </section>
-              <section>
-                <div className="section-label mb-2">Appearance</div>
-                <InspectorField label="Alpha" value={alpha} min={0} max={1} onChange={v => updateField({ alpha: clamp(v, 0, 1) })} onCommit={commit} />
-                <InspectorField label="Tint" value={tint} type="color" onChange={v => updateField({ tint: v })} onCommit={commit} />
-                <InspectorField label="Visible" value={visible} type="checkbox" onChange={v => updateField({ visible: v })} onCommit={commit} />
-              </section>
-              <section>
-                <div className="section-label mb-2">Depth (Z-order)</div>
-                <InspectorField label="Depth" value={depth} step={1} onChange={v => updateField({ depth: Math.round(v) })} onCommit={commit} />
-                <div className="text-[10px] text-gray-600 -mt-1">Higher = rendered on top</div>
-              </section>
-              <section>
-                <div className="section-label mb-2">Origin (Pivot)</div>
-                <InspectorField label="Origin X" value={originX} min={0} max={1} onChange={v => updateField({ originX: clamp(v, 0, 1) })} onCommit={commit} />
-                <InspectorField label="Origin Y" value={originY} min={0} max={1} onChange={v => updateField({ originY: clamp(v, 0, 1) })} onCommit={commit} />
-                <div className="flex flex-wrap gap-1 mt-1.5">
-                  {ORIGIN_PRESETS.map(p => (
-                    <PresetButton key={p.l} label={p.l} className="px-1.5 py-0.5 text-[9px]"
-                      active={originX === p.x && originY === p.y}
-                      onClick={() => updateField({ originX: p.x, originY: p.y }, true)} />
-                  ))}
-                </div>
-                <div className="text-[10px] text-gray-600 mt-1">Affects where x/y anchors on the sprite</div>
-              </section>
-              <section>
-                <div className="section-label mb-2">Flip</div>
-                <div className="flex gap-2">
-                  <PresetButton label="Flip X" active={flipX} className="flex-1 py-1.5 text-xs font-medium"
-                    onClick={() => updateField({ flipX: !flipX }, true)} />
-                  <PresetButton label="Flip Y" active={flipY} className="flex-1 py-1.5 text-xs font-medium"
-                    onClick={() => updateField({ flipY: !flipY }, true)} />
-                </div>
-              </section>
-              <section>
-                <div className="section-label mb-2">Scroll Factor</div>
-                <InspectorField label="Factor X" value={scrollFactorX} step={0.1} min={0} max={1} onChange={v => updateField({ scrollFactorX: v })} onCommit={commit} />
-                <InspectorField label="Factor Y" value={scrollFactorY} step={0.1} min={0} max={1} onChange={v => updateField({ scrollFactorY: v })} onCommit={commit} />
-                <div className="flex gap-2 mt-1.5">
-                  {SCROLL_PRESETS.map(p => (
-                    <PresetButton key={p.l} label={p.l} className="flex-1 py-1 text-[10px]"
-                      active={scrollFactorX === p.v && scrollFactorY === p.v}
-                      onClick={() => updateField({ scrollFactorX: p.v, scrollFactorY: p.v }, true)} />
-                  ))}
-                </div>
-                <div className="text-[10px] text-gray-600 mt-1">0 = fixed to camera (UI), 1 = moves with world</div>
-              </section>
-              {texW > 0 && (
-                <section>
-                  <div className="section-label mb-2">Display Size</div>
-                  <InspectorField label="Width (px)" value={round2(scaleX * texW)} step={1} min={1}
-                    onChange={v => updateField({ scaleX: round2(v / texW) })} onCommit={commit} />
-                  <InspectorField label="Height (px)" value={round2(scaleY * texH)} step={1} min={1}
-                    onChange={v => updateField({ scaleY: round2(v / texH) })} onCommit={commit} />
-                  <div className="text-[10px] text-gray-600 mt-1">Native: {texW}×{texH}px — edits scale</div>
-                </section>
-              )}
-              <button onClick={() => deleteObject(selectedId)}
-                className="w-full py-2 rounded text-xs text-red-400 border border-red-900 hover:bg-red-900/30 transition-colors">
-                🗑 Delete Object
-              </button>
-            </div>
+            <Inspector selectedId={selectedId} onEdit={updateField} onDelete={deleteObject} />
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center text-center p-6">
               <div className="text-5xl mb-4 opacity-20">🎯</div>
