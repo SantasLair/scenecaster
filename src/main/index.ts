@@ -175,21 +175,85 @@ function createWindow(): void {
   else mainWin.loadFile(path.join(__dirname, '../renderer/index.html'));
 }
 
+const hasPackage = (dir: string) => fs.existsSync(path.join(dir, 'package.json'));
+
+/** package.json folders below `dir` (breadth first, shallow, skipping dependency and dot folders), nearest first. */
+function findProjectsBelow(dir: string, maxDepth = 3): string[] {
+  const found: string[] = [];
+  let level = [dir];
+  for (let depth = 0; depth < maxDepth && found.length < 8; depth++) {
+    const next: string[] = [];
+    for (const d of level) {
+      let entries: fs.Dirent[];
+      try { entries = fs.readdirSync(d, { withFileTypes: true }); } catch { continue; }
+      for (const e of entries) {
+        if (!e.isDirectory() || e.name === 'node_modules' || e.name.startsWith('.')) continue;
+        const sub = path.join(d, e.name);
+        (hasPackage(sub) ? found : next).push(sub);
+      }
+    }
+    level = next;
+  }
+  return found;
+}
+
+function findProjectAbove(dir: string): string | null {
+  for (let d = path.dirname(dir); d !== path.dirname(d); d = path.dirname(d)) if (hasPackage(d)) return d;
+  return null;
+}
+
+/** Remembered choices live in userData/settings.json: the last project, and which project root each picked folder resolved to. */
+const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
+function readSettings(): { lastRoot?: string; roots?: Record<string, string> } {
+  const s = readJson(settingsFile());
+  return s && typeof s === 'object' ? s : {};
+}
+function rememberRoot(picked: string, root: string) {
+  const s = readSettings();
+  writeJson(settingsFile(), { lastRoot: root, roots: { ...s.roots, [picked]: root } });
+}
+
+/** The folder the editor should open for `picked`: itself if it has a package.json, a remembered choice, or the user's pick among nearby projects. */
+async function resolveProjectRoot(picked: string): Promise<string> {
+  if (hasPackage(picked)) return picked;
+  const remembered = readSettings().roots?.[picked];
+  if (remembered && hasPackage(remembered) && isInside(picked, remembered)) return remembered;
+  const above = findProjectAbove(picked);
+  const below = findProjectsBelow(picked);
+  const candidates = below.length ? below : above ? [above] : [];
+  if (candidates.length === 0) return picked;
+  const shown = candidates.slice(0, 6);
+  const choice = await dialog.showMessageBox({
+    type: 'question',
+    title: 'Choose the project folder',
+    message: 'No package.json in the selected folder.',
+    detail: `Scenecaster works on the folder that holds package.json. Found:\n${shown.join('\n')}`,
+    buttons: [...shown.map(d => path.relative(path.dirname(picked), d) || d), 'Use the selected folder'],
+    cancelId: shown.length,
+    defaultId: 0,
+    noLink: true,
+  });
+  return shown[choice.response] ?? picked;
+}
+
 app.whenReady().then(() => {
   ipcMain.handle('dialog:openFolder', async () => {
     const result = await dialog.showOpenDialog({
       properties: ['openDirectory'],
       title: 'Open Phaser Project Folder',
+      defaultPath: readSettings().lastRoot,
     });
     const picked = result.canceled ? null : result.filePaths[0] ?? null;
     if (!picked) return null;
+    const root = await resolveProjectRoot(picked);
     try {
-      openedRoots.add(fs.realpathSync.native(picked));
+      openedRoots.add(fs.realpathSync.native(root));
     } catch {
       return null;
     }
-    // Return the path as picked: realpath turns a mapped drive into a UNC path, which cmd.exe rejects as a cwd.
-    return picked;
+    rememberRoot(picked, root);
+    // Return the path as chosen: realpath turns a mapped drive into a UNC path, which cmd.exe rejects as a cwd.
+    return root;
   });
 
   ipcMain.handle('devserver:start', (_e, folder: unknown, script?: unknown) => {
