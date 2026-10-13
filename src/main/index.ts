@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 import { spawn, ChildProcess } from 'child_process';
 import fs from 'fs';
 import path from 'path';
@@ -233,6 +233,15 @@ app.whenReady().then(() => {
     spawn('code', [IS_WIN ? `"${folder}"` : folder], { shell: IS_WIN, detached: true, stdio: 'ignore' })
       .on('error', () => {})
       .unref();
+  });
+
+  // Only the local dev server URL the editor itself started may be opened.
+  ipcMain.handle('shell:openLocal', (_e, rawUrl: unknown) => {
+    try {
+      const u = new URL(String(rawUrl));
+      if (u.protocol !== 'http:' || !['localhost', '127.0.0.1', '[::1]'].includes(u.hostname)) return;
+      shell.openExternal(u.href);
+    } catch { /* invalid URL */ }
   });
 
   ipcMain.handle('bridge:install', (_e, rawFolder: unknown) => {

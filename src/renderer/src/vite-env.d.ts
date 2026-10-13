@@ -45,6 +45,7 @@ interface ElectronAPI {
   onDevServerOutput: (cb: (text: string) => void) => void;
   onDevServerStopped: (cb: () => void) => void;
   removeDevServerListeners: () => void;
+  openLocalUrl: (url: string) => Promise<void>;
   openVSCode: (folder: string) => Promise<void>;
   /** `entry`/`importPath` are set when the module entry could be found in index.html. */
   installBridge: (folder: string) => Promise<IpcResult & { entry?: string; importPath?: string }>;

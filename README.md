@@ -12,7 +12,7 @@ A lightweight visual scene editor for **Phaser 4** games, built with Electron + 
 ![Phaser](https://img.shields.io/badge/Phaser-4.x-blue)
 ![Electron](https://img.shields.io/badge/Electron-latest-teal)
 
-![Scenecaster: design mode, then live mode inspecting and editing a running Phaser game](docs/images/hero.gif)
+![Scenecaster: design mode](docs/images/hero.gif)
 
 ---
 
@@ -37,7 +37,7 @@ Placing things in a Phaser game by typing coordinates and reloading is slow. Sce
 - **Snap to grid** — toggleable 32px snap
 - **Save / load** — layout stored in `forge-scene.json` in your project (Ctrl+S)
 - **Per-project config** — canvas size and dev script saved to `.phaser-forge.json`
-- **Live mode (optional)** — run your game's dev server from the editor, inspect and move objects of the running game through a small bridge script. This is the only feature that adds a file to your project; everything else works without it
+- **Run dev server** — start your game's dev script from the editor, watch its console, and open the game in your browser (live mode, which embedded the running game, is switched off)
 
 ---
 
@@ -58,25 +58,9 @@ Your game code:
 
 Design mode needs no changes to your game project.
 
-**Live mode (optional)** — press **▶ Run Game** and the editor runs your project's dev script (`dev`, `dev:*` or `*:dev:*` from `package.json`), then loads the game from its localhost URL. Running the game changes nothing in your project. To inspect and edit it, you also install the bridge, which does modify your project: click **Install Bridge** and it copies `phaser-forge-bridge.js` (plus a `.d.ts` for TypeScript) to your project root and prints the exact import line for your entry file. Add it **once** — not in every scene — and pass your game instance:
+**Run dev server** — press **▶ Run Game** and the editor runs your project's dev script (`dev`, `dev:*` or `*:dev:*` from `package.json`) and shows its output in the Console tab. Click the localhost link in the toolbar to open the game in your browser, which reloads when you change files. Running the game changes nothing in your project, and the editor never saves implicitly: if the scene has unsaved changes it asks before running.
 
-```js
-// src/main.js (entry from index.html)
-import StartGame from './game/main';
-import { installForgeBridge } from '../phaser-forge-bridge.js';
-
-document.addEventListener('DOMContentLoaded', () => {
-  installForgeBridge(StartGame('game-container')); // StartGame returns the Phaser.Game
-});
-```
-
-One install covers every scene. The bridge does nothing outside the editor, so it is safe to leave in; to keep it out of production builds, load it only in dev:
-
-```js
-if (import.meta.env.DEV) import('../phaser-forge-bridge.js').then(m => m.installForgeBridge(game));
-```
-
-If you can't pass the game, `import '../phaser-forge-bridge.js'` alone also works when the game is on `window.game` or `window.__phaserGame`. Switch to **🎯 Edit** to click objects in the running game, drag them, and tweak position, rotation, scale, alpha, depth and visibility. Live edits change the running game only; copy the values into your code.
+*Live mode* (embedding the running game in the editor and inspecting it through `src/bridge/phaser-forge-bridge.js`) is switched off. The code is kept; set `LIVE_MODE` in `src/renderer/src/live/config.ts` to `true` to re-enable it.
 
 ---
 
@@ -114,7 +98,7 @@ npm run dev
 | Build | Vite (via electron-vite) |
 | Game renderer | Phaser 4 (in iframe) |
 | State | Zustand |
-| Communication | `postMessage` (React ↔ editor iframe / live game bridge) |
+| Communication | `postMessage` (React ↔ editor iframe / editor Phaser view) |
 
 ---
 
