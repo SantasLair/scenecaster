@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useEditorStore } from '../store';
+import { useSceneModel } from '../sceneModel';
+import { ANCHORS, type Anchor } from '../../../shared/protocol';
 import { InspectorField, PresetButton } from './Controls';
 import {
   PROPS, PROP_KEYS, describe, normalizeEdit, pickProps, round2,
@@ -32,7 +34,7 @@ const SECTION_EXTRAS: Partial<Record<PropSection, (p: ObjectProps, onEdit: OnEdi
     <div className="text-[10px] text-gray-600 text-right -mt-1">{Math.round((p.rotation * 180) / Math.PI)}°</div>
   ),
   'Depth (Z-order)': () => (
-    <div className="text-[10px] text-gray-600 -mt-1">Higher = rendered on top</div>
+    <div className="text-[10px] text-gray-600 -mt-1">Higher = in front. Drag in the Objects panel to reorder.</div>
   ),
   'Origin (Pivot)': (p, onEdit) => (
     <>
@@ -61,7 +63,8 @@ const SECTION_EXTRAS: Partial<Record<PropSection, (p: ObjectProps, onEdit: OnEdi
 };
 
 /** Design-mode inspector, driven by the property table in src/shared/props.ts. */
-export default function Inspector({ selectedId, onEdit, onCommit, onDelete }: {
+export default function Inspector({ selectedId, onEdit, onMeta, onCommit, onDelete }: {
+  onMeta: (m: { anchor?: Anchor | null; interactive?: boolean }) => void;
   /** Called when an edit gesture ends (blur, Enter, toggle): one undo step. */
   selectedId: string;
   onEdit: OnEdit;
@@ -71,6 +74,7 @@ export default function Inspector({ selectedId, onEdit, onCommit, onDelete }: {
   const props = useEditorStore(useShallow(pickProps));
   const { texW, texH } = useEditorStore(useShallow(s => ({ texW: s.texW, texH: s.texH })));
   const commit = onCommit;
+  const meta = useSceneModel(s => s.doc.objects.find(o => o.id === selectedId));
 
   const field = (k: PropKey) => {
     const { kind, ui } = describe(k);
@@ -104,6 +108,22 @@ export default function Inspector({ selectedId, onEdit, onCommit, onDelete }: {
           {SECTION_EXTRAS[section]?.(props, onEdit)}
         </section>
       ))}
+      {meta && (
+        <section>
+          <div className="section-label mb-2">Layout &amp; Code</div>
+          <label className="flex items-center justify-between text-xs text-gray-400 mb-1.5">Anchor
+            <select value={meta.anchor ?? ''} onChange={e => onMeta({ anchor: (e.target.value || null) as Anchor | null })}
+              className="bg-gray-900 border border-gray-700 rounded px-1.5 py-1 text-xs text-white">
+              <option value="">none (absolute)</option>
+              {ANCHORS.map(a => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </label>
+          <div className="text-[10px] text-gray-600 mb-2">With an anchor, X/Y are an offset from that point of the canvas.</div>
+          <PresetButton label="Interactive" active={meta.interactive} className="w-full py-1.5 text-xs font-medium"
+            onClick={() => onMeta({ interactive: !meta.interactive })} />
+          <div className="text-[10px] text-gray-600 mt-1">The code attaches input to this object.</div>
+        </section>
+      )}
       {texW > 0 && (
         <section>
           <div className="section-label mb-2">Display Size</div>

@@ -5,7 +5,7 @@ import 'dockview-react/dist/styles/dockview.css';
 
 /** Everything the panels need from App, passed by context (dockview renders panels as portals inside our tree). */
 export interface DockCtx {
-  hierarchy: React.ReactNode;
+  objects: React.ReactNode;
   assets: React.ReactNode;
   inspector: React.ReactNode;
   console: React.ReactNode;
@@ -15,7 +15,7 @@ export interface DockCtx {
 
 export const DockContext = createContext<DockCtx | null>(null);
 
-const LAYOUT_KEY = 'scenecaster.layout.v1';
+const LAYOUT_KEY = 'scenecaster.layout.v2';
 
 function slot(key: keyof DockCtx) {
   return function Slot(_: IDockviewPanelProps) {
@@ -31,7 +31,7 @@ function ViewportSlot(_: IDockviewPanelProps) {
 }
 
 const components = {
-  hierarchy: slot('hierarchy'),
+  objects: slot('objects'),
   assets: slot('assets'),
   inspector: slot('inspector'),
   console: slot('console'),
@@ -42,7 +42,7 @@ const components = {
 export function buildDefaultLayout(api: DockviewApi) {
   api.clear();
   const vp = api.addPanel({ id: 'viewport', component: 'viewport', title: 'Viewport' });
-  api.addPanel({ id: 'hierarchy', component: 'hierarchy', title: 'Hierarchy',
+  api.addPanel({ id: 'objects', component: 'objects', title: 'Objects',
     position: { referencePanel: vp, direction: 'left' }, initialWidth: 220 });
   api.addPanel({ id: 'inspector', component: 'inspector', title: 'Inspector',
     position: { referencePanel: vp, direction: 'right' }, initialWidth: 270 });

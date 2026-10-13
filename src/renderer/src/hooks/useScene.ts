@@ -2,10 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import type React from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useEditorStore, ObjectProps } from '../store';
-import type { HierarchyItem } from '../components/HierarchyPanel';
+import type { ObjectItem } from '../components/ObjectsPanel';
 import { PROP_DEFAULTS, PROP_KEYS, pickProps, readWireProps } from '../../../shared/props';
 import { DEFAULT_SCENE } from '../../../shared/layout';
-import { formatScene, parseScene, newId, uniqueName } from '../../../shared/scene';
+import { formatScene, parseScene, newId, uniqueName, toIdentifier } from '../../../shared/scene';
 import {
   isMessage, isForge, unhandled,
   type ToolMode, type SceneObject, type EditorToViewport, type BridgeToEditor, type Shape, type AssetPayload,
@@ -60,7 +60,7 @@ export function useScene({
     objects: s.doc.objects, rev: s.rev, savedRev: s.savedRev, problems: s.problems, blocked: s.blocked, sceneStatus: s.status,
   })));
   const saveStatus: SaveStatus = saving ? 'saving' : rev !== savedRev ? 'unsaved' : 'saved';
-  const hierarchy: HierarchyItem[] = objects.map(o => ({
+  const objectItems: ObjectItem[] = objects.map(o => ({
     id: o.id, name: o.name, type: o.kind === 'sprite' ? 'Sprite' : SHAPE_NAMES[o.shape],
     visible: o.visible, locked: lockedIds.includes(o.id),
   }));
@@ -133,12 +133,12 @@ export function useScene({
   const duplicateObject = (id: string) => {
     const src = model.objectById(id);
     if (!src) return;
-    addObject({ ...src, id: newId(), name: uniqueName(`${src.name} Copy`, objects.map(o => o.name)), x: src.x + 20, y: src.y + 20 });
+    addObject({ ...src, id: newId(), name: uniqueName(`${src.name}Copy`, objects.map(o => o.name)), depth: objects.length, x: src.x + 20, y: src.y + 20 });
   };
 
   const renameObject = (id: string, name: string) => {
     const before = model.objectById(id)?.name;
-    const after = uniqueName(name.trim() || 'Object', objects.filter(o => o.id !== id).map(o => o.name));
+    const after = uniqueName(toIdentifier(name), objects.filter(o => o.id !== id).map(o => o.name));
     if (before === undefined || before === after) return;
     commitEdit();
     model.setName(id, after);
@@ -154,13 +154,35 @@ export function useScene({
     commitEdit();
   };
 
+  /** Drag-reorder: `toIndex` is the new position in the scene order (depth). */
+  const reorderObject = (id: string, toIndex: number) => {
+    commitEdit();
+    const before = model.reorderObject(id, toIndex);
+    if (!before) return;
+    const after = useSceneModel.getState().doc.objects;
+    history.push({ undo: () => model.setOrder(before), redo: () => model.setOrder(after) });
+    const sel = useEditorStore.getState().selectedId;
+    const o = sel && model.objectById(sel);
+    if (o) useEditorStore.getState().updateProperties({ depth: o.depth });
+  };
+
+  const updateMeta = (meta: Parameters<typeof model.setMeta>[1]) => {
+    const id = useEditorStore.getState().selectedId;
+    const o = id && model.objectById(id);
+    if (!id || !o) return;
+    commitEdit();
+    const before = { anchor: o.anchor, interactive: o.interactive };
+    model.setMeta(id, meta);
+    history.push({ undo: () => model.setMeta(id, before), redo: () => model.setMeta(id, meta) });
+  };
+
   const toggleLocked = (id: string) =>
     setLockedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
 
   const addPrimitive = (shape: Shape) => {
     addObject({
-      id: newId(), name: uniqueName(SHAPE_NAMES[shape], objects.map(o => o.name)), parentId: null, kind: 'primitive', shape,
-      ...PROP_DEFAULTS, x: canvasSize.w / 2, y: canvasSize.h / 2,
+      id: newId(), name: uniqueName(SHAPE_NAMES[shape], objects.map(o => o.name)), anchor: null, interactive: false, kind: 'primitive', shape,
+      ...PROP_DEFAULTS, depth: objects.length, x: canvasSize.w / 2, y: canvasSize.h / 2,
     });
   };
 
@@ -171,8 +193,8 @@ export function useScene({
 `);
     model.primeTexture(asset, file.dataUrl);
     addObject({
-      id: newId(), name: uniqueName(file.name.replace(/.[^.]+$/, ''), objects.map(o => o.name)), parentId: null,
-      kind: 'sprite', asset, ...PROP_DEFAULTS, x: at?.x ?? canvasSize.w / 2, y: at?.y ?? canvasSize.h / 2,
+      id: newId(), name: uniqueName(toIdentifier(file.name.replace(/.[^.]+$/, '')), objects.map(o => o.name)), anchor: null, interactive: false,
+      kind: 'sprite', asset, ...PROP_DEFAULTS, depth: objects.length, x: at?.x ?? canvasSize.w / 2, y: at?.y ?? canvasSize.h / 2,
     });
   };
 
@@ -339,8 +361,8 @@ export function useScene({
   }, [iframeRef, onMessage, handleShortcut]);
 
   return {
-    hierarchy, toolMode, saveStatus, saveBlocked: blocked, sceneStatus, createScene, problems, addPrimitive, dropAsset,
+    objectItems, toolMode, saveStatus, saveBlocked: blocked, sceneStatus, createScene, problems, addPrimitive, dropAsset,
     setTool, toggleSnap, undo, redo, updateField, commitEdit, selectObject, deleteObject, duplicateObject,
-    renameObject, toggleVisible, toggleLocked, handleSave, beginProject, endProject,
+    renameObject, reorderObject, updateMeta, toggleVisible, toggleLocked, handleSave, beginProject, endProject,
   };
 }

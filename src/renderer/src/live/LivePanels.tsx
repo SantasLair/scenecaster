@@ -7,12 +7,12 @@ import type { LiveBridge } from './useLiveBridge';
 const liveLabel = (o: BridgeObject) =>
   o.name || (o.text !== undefined ? `"${o.text.replace(/\s+/g, ' ')}"` : o.textureKey) || o.id;
 
-export function LiveHierarchy({ live }: { live: LiveBridge }) {
+export function LiveObjects({ live }: { live: LiveBridge }) {
   const { bridgeStatus, bridgeScenes, activeBridgeScene, bridgeHasGame, bridgeObjects, bridgeSelectedId } = live;
   return (
     <aside className="flex flex-col border-r border-gray-700 bg-gray-800 h-full overflow-hidden">
       <div className="px-3 py-2 border-b border-gray-700 flex items-center gap-2 flex-shrink-0">
-        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex-1">Hierarchy</span>
+        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex-1">Objects</span>
         <span className={`text-[10px] px-1.5 py-0.5 rounded flex items-center gap-1 ${
           bridgeStatus === 'connected' ? 'bg-green-900/50 text-green-400' :
           bridgeStatus === 'connecting' ? 'bg-yellow-900/50 text-yellow-400' :
@@ -76,7 +76,7 @@ export function LiveInspector({ live }: { live: LiveBridge }) {
       <div className="flex-1 flex flex-col items-center justify-center text-center p-6">
         <div className="text-4xl mb-3 opacity-20">🎮</div>
         <p className="text-xs text-gray-500 leading-relaxed">
-          {bridgeStatus === 'connected' ? 'Click an object in the hierarchy.' : 'Waiting for bridge connection…'}
+          {bridgeStatus === 'connected' ? 'Click an object in the Objects panel.' : 'Waiting for bridge connection…'}
         </p>
       </div>
     );
