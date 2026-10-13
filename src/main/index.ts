@@ -414,6 +414,20 @@ app.whenReady().then(() => {
     catch (e) { return { ok: false, error: `Cannot read scene file: ${(e as Error).message}` }; }
   });
 
+  // Scenes the editor can open: layout files on disk, plus scenes project.json declares with a layout (no file yet).
+  ipcMain.handle("scene:list", (_e, folder: unknown) => {
+    const dir = projectFile(folder, SCENES_DIR);
+    const cfg = readJson(projectFile(folder, PROJECT_FILE) ?? "");
+    const found = new Map<string, boolean>();
+    for (const sc of Array.isArray(cfg?.scenes) ? cfg.scenes : []) {
+      if (sc?.layout === true && typeof sc.key === "string" && SCENE_NAME_RE.test(sc.key)) found.set(sc.key, false);
+    }
+    let names: string[] = [];
+    try { names = dir ? fs.readdirSync(dir) : []; } catch { /* no scenes folder yet */ }
+    for (const n of names) if (n.endsWith(SCENE_EXT) && SCENE_NAME_RE.test(n.slice(0, -SCENE_EXT.length))) found.set(n.slice(0, -SCENE_EXT.length), true);
+    return [...found].map(([key, hasFile]) => ({ key, hasFile })).sort((a, b) => a.key.localeCompare(b.key));
+  });
+
   // project.json holds game settings; the renderer sees the flat ProjectConfig shape.
   ipcMain.handle('project:readConfig', (_e, folder: unknown) => {
     const file = projectFile(folder, PROJECT_FILE);
@@ -424,7 +438,10 @@ app.whenReady().then(() => {
   ipcMain.handle('project:writeConfig', (_e, folder: unknown, config: { canvasWidth: number; canvasHeight: number; devScript?: string; engine?: string }) => {
     const file = projectFile(folder, PROJECT_FILE);
     if (!file || !(config?.canvasWidth > 0) || !(config?.canvasHeight > 0)) return { ok: false, error: 'Invalid project config.' };
-    return writeJson(file, { version: 1, engine: isEngine(config.engine) ? config.engine : DEFAULT_ENGINE, game: { width: config.canvasWidth, height: config.canvasHeight }, devScript: config.devScript });
+    // Merge into the existing file: a project adopted by a game carries fields the editor does not own (scenes, flow, game settings).
+    const existing = fs.existsSync(file) ? readJson(file) : {};
+    if (!existing) return { ok: false, error: "project.json exists but cannot be read; not overwriting it." };
+    return writeJson(file, { ...existing, version: 1, engine: isEngine(config.engine) ? config.engine : DEFAULT_ENGINE, game: { ...existing.game, width: config.canvasWidth, height: config.canvasHeight }, devScript: config.devScript });
   });
 
   // Dev-server scripts only: `dev`, `dev:*`, and variants like `engine:dev:fantasy`.

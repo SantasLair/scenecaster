@@ -24,6 +24,9 @@ interface ProjectConfig {
   engine: import('../../shared/props').EngineId;
 }
 
+/** A scene the editor can open; `hasFile` is false when project.json declares it but no layout file exists yet. */
+interface SceneEntry { key: string; hasFile: boolean }
+
 type LoadedScene = IpcResult & { found?: boolean; data?: unknown };
 
 type IpcResult = { ok: boolean; error?: string };
@@ -39,6 +42,7 @@ interface ElectronAPI {
   confirmUnsaved: (message: string) => Promise<'save' | 'discard' | 'cancel'>;
   watchScene: (folder: string, name: string) => Promise<void>;
   onSceneChanged: (cb: () => void) => () => void;
+  listScenes: (folder: string) => Promise<SceneEntry[]>;
   loadScene: (folder: string, name: string) => Promise<LoadedScene>;
   startDevServer: (folder: string, script?: string) => Promise<IpcResult & { url?: string }>;
   stopDevServer: () => Promise<IpcResult>;

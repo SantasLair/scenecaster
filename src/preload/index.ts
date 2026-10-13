@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('scene:changed', listener);
     return () => { ipcRenderer.removeListener('scene:changed', listener); };
   },
+  listScenes: (folder: string) => ipcRenderer.invoke('scene:list', folder),
   loadScene: (folder: string, name: string) => ipcRenderer.invoke('scene:load', folder, name),
 
   // Dev server
