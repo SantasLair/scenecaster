@@ -723,7 +723,7 @@ export default function App() {
         <div onMouseDown={e => startSideResize(e, 'hierarchy')}
           className="w-1 flex-shrink-0 cursor-ew-resize hover:bg-blue-500 transition-colors bg-transparent" />
 
-        <main className="flex-1 bg-[#0a0f1a] relative overflow-hidden">
+        <main className="flex-1 bg-[#07061a] relative overflow-hidden">
           <iframe ref={iframeRef} src={iframeSrc} className="w-full h-full border-none" title="Phaser Viewport" />
 
           {isDraggingAsset && (
