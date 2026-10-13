@@ -43,15 +43,24 @@ The roadmap is checked against a set of local Phaser prototype games (bannerwake
 | Command-pattern undo (`push({undo, redo})`) | **Yes** | Phase 1 |
 | Polling file watcher for external edits | **Yes, now essential** | Phase 1; the AI is the "external editor" |
 | Scene = file with `preloadAssets`, size, background | **Yes** | `scenecaster/scenes/<name>.scene.json` |
-| UUID ids, `parentId`, `locked`/`visible`; **plus unique readable names** | **Yes** | Phase 1 |
+| UUID ids, `locked`/`visible`; **plus unique readable names that are valid code identifiers** | **Yes** | Phase 1 |
 | Object definition vs instance (prefabs) | **Later** | Phase 5 |
 | Script property schema in the inspector, name-based references | **Optional, last** | Phase 6 |
-| Layers | **Cut down** | Group by depth; existing scroll factor |
+| Layers and hierarchy | **No** | Flat object list; z-order is a per-object `depth` (list order). No containers or nesting |
 | Camera persistence, grid, align/distribute, recent projects | **Cheap ones** | Phases 1 and 4 |
 | Playwright E2E with an ephemeral project | **Yes** | Phase 7 |
 | Signals, GML helpers, `TulioBehaviour` lifecycle, own game loop | **No** | Engine features |
 | Dock layout (dockview, resizable/persisted panels) | **Yes, revised** | Phase 1; panel sizing is broken today (see below) |
 | Monaco, Konva designer, hosted build, multi-engine export, monetization | **No** | Out of scope |
+
+## Flat, engine-neutral scene format
+
+The editor is a flat, simple scene editor (like AppGameKit Studio). Scene files are **engine-neutral** so a C#, MonoGame or raylib project can later load them with the same workflow. Schema: `docs/SCENE_FORMAT.md`.
+
+- **Core fields are engine-agnostic:** `name`, `id`, `kind`, `x`, `y`, `scale`, `rotation`, `depth`, `visible`, `locked`, `anchor`, `interactive`, and asset references by key/relative path.
+- **Engine-specific data** (origin, scroll factor, blend, flip, tint) lives under an optional namespaced `phaser` object, or is isolated in the Phaser view adapter. Another engine ignores it.
+- **Flat only:** no layers, containers or `parentId`. Order is `depth`.
+- **UI scenes:** an `overlay` scene draws over another. Named objects are the code contract (names must be valid code identifiers, so `playButton` maps to a variable or field). `anchor` places an object relative to a canvas edge/center with x/y as the offset; `interactive` marks objects the code will wire input to.
 
 ## Phases
 
@@ -70,7 +79,7 @@ Effort: **S** (under a day) · **M** (a few days) · **L** (a week or more).
 - [x] **M** Command-based history; add/delete/duplicate/rename become undoable
 - [x] **S** Move scene storage to `scenecaster/scenes/<name>.scene.json`
 - [ ] **S** **Naming:** the folder name is one constant in the editor. *(Partial: constant is `src/shared/layout.ts`; generated docs not started.)* `MIGRATE.md`, `check.mjs`, the README and the `CLAUDE.md` pointer are generated from it, so a future rename is a one-line change. The folder is a normal (not hidden) directory, because many search tools skip dot-folders.
-- [x] **S** AI-friendly format: relative asset paths, `version`, unique readable `name` per object, UUID `id` kept, `parentId`, stable key order, one object per few lines for clean diffs
+- [x] **S** AI-friendly format: relative asset paths, `version`, unique readable `name` per object, UUID `id` kept, stable key order, one object per few lines for clean diffs. Flat list, no `parentId`.
 - [ ] **S** *(Partial: `key` and `overlay` are saved and validated; no overlay backdrop in the viewport yet.)* Scene `key` field that must match the Phaser scene key, plus an `overlay` flag (the scene draws over another, so the editor shows a neutral backdrop and the canvas size comes from the game)
 - [x] **S** Project root discovery: Open Project finds the nearest `package.json` (e.g. `dungeon-strategy/game`) or lets you pick it; remembers it
 - [x] **S** Write nothing on open. Today the canvas-size prompt writes `.phaser-forge.json` immediately; defer that until a setting changes or something is saved.
@@ -128,12 +137,12 @@ Effort: **S** (under a day) · **M** (a few days) · **L** (a week or more).
 - [ ] **S** Decision point after adopting two or three target projects: is the snippet enough, or is a real loader file needed (Phase 6)? Also check how the reload loop feels (full reload, `?scene=`).
 
 ### Phase 4 — Object types that earn their keep
-- [ ] **M** Image, Text, Container/Group (`parentId`), NineSlice (panels), TileSprite
+- [ ] **M** Image, Text, NineSlice (panels), TileSprite. No Container/Group: the model stays flat (deferred, maybe never).
 - [ ] **M** **Anchors for UI scenes:** each object anchors to a canvas edge or center (top-right, bottom-center, ...) with an offset, so a HUD survives different canvas sizes and FIT scaling. The editor previews at a few canvas sizes; the loader snippet applies the anchors.
-- [ ] **S** Button-style objects are just Image/NineSlice plus Text in a Container with a name; no behaviour. The AI wires the clicks.
-- [ ] **S** Hierarchy group by depth
+- [ ] **S** **Button object type (early in this phase):** one flat object (image or nine-slice plus optional label text, `interactive` on, a name that is the code contract). No behaviour; the AI wires the clicks.
+- [ ] **S** Objects panel: drag-reorder sets depth (done in Phase 1); optional grouping by depth ranges
 - [ ] **S** Align/distribute for multi-selection
-- [ ] **S** Show the Phaser key in hierarchy and inspector
+- [ ] **S** Show the Phaser key in the Objects panel and inspector
 
 ### Phase 5 — Prefab-lite
 - [ ] **M** Object definition (`scenecaster/objects/*.object.json`) plus instances that reference it
