@@ -1,34 +1,29 @@
 import { useShallow } from 'zustand/react/shallow';
-import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 import type React from 'react';
 import { useEditorStore, ObjectProps } from './store';
 import HierarchyPanel, { HierarchyItem } from './components/HierarchyPanel';
 import AssetBrowser from './components/AssetBrowser';
 import Inspector from './components/Inspector';
-import { InspectorField, ToolBtn, SetupDialog } from './components/Controls';
+import { ToolBtn, SetupDialog } from './components/Controls';
 import { beginDrag, clamp } from './beginDrag';
-import { readWireProps, round2 } from '../../shared/props';
+import { readWireProps } from '../../shared/props';
 import { DEFAULT_SCENE } from '../../shared/layout';
+import { LIVE_MODE } from './live/config';
+import { useLiveBridge } from './live/useLiveBridge';
+import { LiveHierarchy, LiveInspector, LiveOverlay, LiveModeToggle } from './live/LivePanels';
 import {
   isMessage, isForge, unhandled,
-  type ToolMode, type LiveProp, type BridgeObject, type ScreenRect, type BridgeScene, type AssetPayload, type SceneObject,
-  type EditorToViewport, type EditorToBridge, type BridgeToEditor, type Forge,
+  type ToolMode, type AssetPayload, type SceneObject, type EditorToViewport,
 } from '../../shared/protocol';
 
 type DevStatus = 'idle' | 'starting' | 'running' | 'error';
-type BridgeStatus = 'disconnected' | 'connecting' | 'connected';
 type ShortcutKey = Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey' | 'shiftKey'>;
 
 const api = window.electronAPI;
-// Game objects are rarely named, so fall back to their text or texture before the generated id.
-const liveLabel = (o: BridgeObject) =>
-  o.name || (o.text !== undefined ? `"${o.text.replace(/\s+/g, ' ')}"` : o.textureKey) || o.id;
 
 const PANEL_H = { min: 72, max: 480, initial: 180 };
 const SIDE_W = { min: 140, max: 400 };
-const BRIDGE_PING_MS = 2000;
-const BRIDGE_PING_ATTEMPTS = 15;
-const LIVE_REFRESH_MS = 500;
 
 const TOOLS: { mode: ToolMode; icon: string; label: string; key: string }[] = [
   { mode: 'select', icon: '↖', label: 'Select (Q)', key: 'q' },
@@ -49,7 +44,6 @@ const isTyping = (t: EventTarget | null) =>
 
 export default function App() {
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const overlayRef = useRef<HTMLDivElement>(null);
   const consoleEndRef = useRef<HTMLDivElement>(null);
 
   const [hierarchy, setHierarchy] = useState<HierarchyItem[]>([]);
@@ -72,49 +66,20 @@ export default function App() {
   const [devScripts, setDevScripts] = useState<string[]>([]);
   const [selectedScript, setSelectedScript] = useState('dev');
 
-  const [bridgeStatus, setBridgeStatus] = useState<BridgeStatus>('disconnected');
-  const [bridgeHasGame, setBridgeHasGame] = useState(true);
-  const [bridgeScenes, setBridgeScenes] = useState<BridgeScene[]>([]);
-  const [activeBridgeScene, setActiveBridgeScene] = useState<string | null>(null);
-  const [bridgeObjects, setBridgeObjects] = useState<BridgeObject[]>([]);
-  const [bridgeSelected, setBridgeSelected] = useState<BridgeObject | null>(null);
-  const [bridgeScreenBounds, setBridgeScreenBounds] = useState<ScreenRect | null>(null);
-  const [liveEditMode, setLiveEditMode] = useState(false);
-  const bridgeSelectedId = bridgeSelected?.id ?? null;
 
-  const pingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pendingSaveRef = useRef(false);
   /** True once scenecaster/project.json exists; opening a project writes nothing, the first save or setting change does. */
   const configPersistedRef = useRef(false);
   const pendingLoadFolderRef = useRef<string | null>(null);
-  const liveDragRef = useRef<{
-    id: string; pointerId: number;
-    startClientX: number; startClientY: number;
-    startX: number; startY: number;
-    moved: boolean;
-  } | null>(null);
 
-  // Target origin for outgoing posts: the dev game's origin when live, else the editor's own origin
-  // (phaser.html is same-origin). Under file:// the origin is opaque ('null'), so '*' is unavoidable there.
-  const targetOrigin = useMemo(() => {
-    try {
-      const o = new URL(devUrl ?? window.location.href).origin;
-      return o === 'null' ? '*' : o;
-    } catch { return '*'; }
-  }, [devUrl]);
-  const postToIframe = useCallback(
-    (msg: EditorToViewport | Forge<EditorToBridge>) => iframeRef.current?.contentWindow?.postMessage(msg, targetOrigin),
-    [targetOrigin],
-  );
-  const send: (msg: EditorToViewport) => void = postToIframe;
-  const sendBridge = useCallback((msg: EditorToBridge) => postToIframe({ forge: true, ...msg }), [postToIframe]);
-  const requestBridgeObjects = useCallback((sceneKey: string) => sendBridge({ type: 'FORGE_GET_OBJECTS', sceneKey }), [sendBridge]);
   const appendLog = useCallback((text: string) => setDevLogs(prev => prev + text), []);
   const markDirty = () => setSaveStatus('unsaved');
   const showConsole = () => { setActiveTab('console'); setPanelOpen(true); };
+  const liveUrl = LIVE_MODE ? devUrl : null;
+  const live = useLiveBridge({ liveUrl, iframeRef, projectFolder, appendLog, showConsole });
+  const send: (msg: EditorToViewport) => void = live.postToIframe;
   const patchItem = (id: string, patch: Partial<HierarchyItem>) =>
     setHierarchy(prev => prev.map(i => i.id === id ? { ...i, ...patch } : i));
-  const clearLiveSelection = () => { setBridgeSelected(null); setBridgeScreenBounds(null); };
 
   useEffect(() => {
     api.onDevServerOutput(appendLog);
@@ -129,32 +94,6 @@ export default function App() {
     send({ type: 'SET_LOCKED_IDS', ids: lockedKey ? lockedKey.split('\n') : [] });
   }, [lockedKey, send]);
 
-  // Keep the live selection box in sync while the game animates the object.
-  useEffect(() => {
-    if (bridgeStatus !== 'connected' || !liveEditMode || !bridgeSelectedId) return;
-    const timer = setInterval(() => sendBridge({ type: 'FORGE_SELECT', id: bridgeSelectedId, reason: 'refresh' }), LIVE_REFRESH_MS);
-    return () => clearInterval(timer);
-  }, [bridgeStatus, liveEditMode, bridgeSelectedId, sendBridge]);
-
-  // New game URL: reset bridge state and ping until the bridge answers (it also announces FORGE_READY itself).
-  useEffect(() => {
-    setBridgeStatus(devUrl ? 'connecting' : 'disconnected');
-    setBridgeHasGame(true);
-    setBridgeScenes([]);
-    setBridgeObjects([]);
-    setBridgeSelected(null);
-    setBridgeScreenBounds(null);
-    if (!devUrl) return;
-    let attempts = 0;
-    const timer = setInterval(() => {
-      sendBridge({ type: 'FORGE_PING' });
-      if (++attempts < BRIDGE_PING_ATTEMPTS) return;
-      clearInterval(timer);
-      setBridgeStatus(s => s === 'connecting' ? 'disconnected' : s);
-    }, BRIDGE_PING_MS);
-    pingTimerRef.current = timer;
-    return () => clearInterval(timer);
-  }, [devUrl, sendBridge]);
 
   const setTool = (mode: ToolMode) => {
     setToolMode(mode);
@@ -216,7 +155,7 @@ export default function App() {
     setHierarchy(prev => prev.map(i => i.id === id ? { ...i, locked: !i.locked } : i));
 
   const handleSave = () => {
-    if (!projectFolder || devUrl) return;
+    if (!projectFolder || liveUrl) return;
     pendingSaveRef.current = true;
     send({ type: 'GET_SCENE_STATE' });
   };
@@ -272,8 +211,8 @@ export default function App() {
   const handleRunStop = async () => {
     if (devStatus === 'running' || devStatus === 'starting') return stopDev();
     if (!projectFolder) return;
-    // Starting the game replaces the editor scene; never save implicitly, ask instead.
-    if (saveStatus === 'unsaved' && !window.confirm('This scene has unsaved changes and running the game will discard them. Run anyway?')) return;
+    // Live mode replaces the editor scene with the game; never save implicitly, ask instead.
+    if (LIVE_MODE && saveStatus === 'unsaved' && !window.confirm('This scene has unsaved changes and running the game will discard them. Run anyway?')) return;
     setDevStatus('starting');
     setDevLogs('');
     showConsole();
@@ -287,17 +226,6 @@ export default function App() {
     }
   };
 
-  const installBridge = async () => {
-    if (!projectFolder) return;
-    const r = await api.installBridge(projectFolder);
-    appendLog(r.ok
-      ? `\n[Bridge installed: phaser-forge-bridge.js]\n` +
-        `[Add it ONCE to ${r.entry ?? 'your game entry file'} (not to each scene) and pass your Phaser.Game:]\n` +
-        `  import { installForgeBridge } from '${r.importPath ?? './phaser-forge-bridge.js'}';${r.importPath ? '' : '  // path relative to that file'}\n` +
-        `  installForgeBridge(game);\n`
-      : `\n[Bridge install failed: ${r.error ?? 'Unknown error'}]\n`);
-    showConsole();
-  };
 
   const openProject = async (folder: string, config: ProjectConfig, persisted: boolean) => {
     if (devStatus !== 'idle') await stopDev();
@@ -311,7 +239,7 @@ export default function App() {
     pendingLoadFolderRef.current = folder;
     // Otherwise the iframe reloads (new size or leaving live mode) and its SCENE_READY triggers the load.
     const sizeChanged = config.canvasWidth !== canvasSize.w || config.canvasHeight !== canvasSize.h;
-    if (!sizeChanged && !devUrl) send({ type: 'RESET_SCENE' });
+    if (!sizeChanged && !liveUrl) send({ type: 'RESET_SCENE' });
   };
 
   const handleOpenProject = async () => {
@@ -348,121 +276,10 @@ export default function App() {
     if (file) send({ type: 'ADD_SPRITE_FROM_ASSET', file });
   };
 
-  const selectLiveObject = (obj: BridgeObject) => {
-    setBridgeSelected(obj);
-    sendBridge({ type: 'FORGE_SELECT', id: obj.id });
-  };
-
-  const changeLiveScene = (key: string) => {
-    setActiveBridgeScene(key);
-    clearLiveSelection();
-    requestBridgeObjects(key);
-  };
-
-  const setLiveProp = (prop: LiveProp, value: number | boolean) => {
-    if (!bridgeSelected) return;
-    setBridgeSelected({ ...bridgeSelected, [prop]: value });
-    sendBridge({ type: 'FORGE_SET_PROP', id: bridgeSelected.id, prop, value });
-  };
-
-  const handleLiveClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    const drag = liveDragRef.current;
-    liveDragRef.current = null;
-    const rect = iframeRef.current?.getBoundingClientRect();
-    if (drag?.moved || !activeBridgeScene || bridgeStatus !== 'connected' || !rect) return;
-    sendBridge({
-      type: 'FORGE_PICK_OBJECT',
-      sceneKey: activeBridgeScene,
-      viewportX: e.clientX - rect.left,
-      viewportY: e.clientY - rect.top,
-    });
-  };
-
-  const handleLivePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    const b = bridgeScreenBounds;
-    const overlay = overlayRef.current?.getBoundingClientRect();
-    if (!bridgeSelected || !b || !overlay) return;
-    const x = e.clientX - overlay.left;
-    const y = e.clientY - overlay.top;
-    if (x < b.x || x > b.x + b.width || y < b.y || y > b.y + b.height) return;
-    e.preventDefault();
-    e.currentTarget.setPointerCapture(e.pointerId);
-    liveDragRef.current = {
-      id: bridgeSelected.id,
-      pointerId: e.pointerId,
-      startClientX: e.clientX,
-      startClientY: e.clientY,
-      startX: bridgeSelected.x,
-      startY: bridgeSelected.y,
-      moved: false,
-    };
-  };
-
-  const handleLivePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    const drag = liveDragRef.current;
-    if (!drag || drag.pointerId !== e.pointerId) return;
-    const dx = e.clientX - drag.startClientX;
-    const dy = e.clientY - drag.startClientY;
-    if (!drag.moved && Math.abs(dx) + Math.abs(dy) < 2) return;
-    drag.moved = true;
-    sendBridge({ type: 'FORGE_MOVE_OBJECT', id: drag.id, startX: drag.startX, startY: drag.startY, dx, dy });
-  };
-
-  const handleLivePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
-    const drag = liveDragRef.current;
-    if (!drag || drag.pointerId !== e.pointerId) return;
-    e.currentTarget.releasePointerCapture(e.pointerId);
-    if (drag.moved && activeBridgeScene) requestBridgeObjects(activeBridgeScene);
-  };
-
-  const onBridgeMessage = (m: BridgeToEditor) => {
-    switch (m.type) {
-      case 'FORGE_READY':
-      case 'FORGE_PONG':
-        setBridgeStatus('connected');
-        if (pingTimerRef.current) clearInterval(pingTimerRef.current);
-        // Older bridges don't report hasGame.
-        setBridgeHasGame(m.hasGame !== false);
-        if (m.hasGame !== false) sendBridge({ type: 'FORGE_GET_SCENES' });
-        break;
-      case 'FORGE_SCENES': {
-        const scenes: BridgeScene[] = m.scenes ?? [];
-        const active = scenes.find(s => s.active)?.key ?? scenes[0]?.key ?? null;
-        setBridgeScenes(scenes);
-        setActiveBridgeScene(active);
-        if (active) requestBridgeObjects(active);
-        break;
-      }
-      case 'FORGE_OBJECTS':
-        setBridgeObjects(m.objects ?? []);
-        setActiveBridgeScene(m.sceneKey);
-        break;
-      case 'FORGE_SELECTED':
-        setBridgeSelected(m.props ?? null);
-        setBridgeScreenBounds(m.screenBounds ?? null);
-        if (m.sceneKey && m.reason !== 'refresh' && m.reason !== 'move') {
-          setActiveBridgeScene(m.sceneKey);
-          requestBridgeObjects(m.sceneKey);
-        }
-        break;
-      case 'FORGE_DESELECTED':
-        clearLiveSelection();
-        break;
-      case 'FORGE_PROP_SET': {
-        if (m.id !== bridgeSelectedId) break;
-        setBridgeSelected(m.props ?? null);
-        if (m.screenBounds) setBridgeScreenBounds(m.screenBounds);
-        const sceneKey = m.sceneKey ?? activeBridgeScene;
-        if (sceneKey) requestBridgeObjects(sceneKey);
-        break;
-      }
-      default: unhandled(m);
-    }
-  };
 
   /** Returns true when the key was an editor shortcut. */
   const handleShortcut = useLatest((k: ShortcutKey) => {
-    if (devUrl) return false;
+    if (liveUrl) return false;
     const key = k.key.toLowerCase();
     if (k.ctrlKey || k.metaKey) {
       if (key === 's') handleSave();
@@ -482,7 +299,7 @@ export default function App() {
 
   const onMessage = useLatest((data: unknown) => {
     if (!isMessage(data)) return;
-    if (isForge(data)) return onBridgeMessage(data);
+    if (isForge(data)) return LIVE_MODE ? live.onBridgeMessage(data) : undefined;
     const m = data;
     switch (m.type) {
       case 'KEYDOWN':
@@ -557,7 +374,7 @@ export default function App() {
     beginDrag(e, 'ns-resize', (_dx, dy) => setPanelH(clamp(h0 - dy, PANEL_H.min, PANEL_H.max)));
   };
 
-  const iframeSrc = devUrl ?? `./phaser.html?w=${canvasSize.w}&h=${canvasSize.h}`;
+  const iframeSrc = liveUrl ?? `./phaser.html?w=${canvasSize.w}&h=${canvasSize.h}`;
   const { selectedId, snapEnabled } = useEditorStore(useShallow(s => ({ selectedId: s.selectedId, snapEnabled: s.snapEnabled })));
   const pastCount = useEditorStore(s => s.past.length);
   const canUndo = pastCount > 0;
@@ -606,22 +423,23 @@ export default function App() {
         </button>
 
         <div className="flex items-center gap-0.5 ml-1">
-          <ToolBtn icon="↩" label="Undo" disabled={!canUndo || !!devUrl} onClick={undo} />
-          <ToolBtn icon="↪" label="Redo" disabled={!canRedo || !!devUrl} onClick={redo} />
+          <ToolBtn icon="↩" label="Undo" disabled={!canUndo || !!liveUrl} onClick={undo} />
+          <ToolBtn icon="↪" label="Redo" disabled={!canRedo || !!liveUrl} onClick={redo} />
         </div>
 
         <div className="flex-1" />
         {pastCount > 0 && <span className="text-xs text-gray-700 hidden xl:block mr-2">{pastCount} action{pastCount !== 1 ? 's' : ''}</span>}
-        {projectFolder && !devUrl && (
+        {projectFolder && !liveUrl && (
           <span className={`text-[10px] hidden xl:block ${saveStatus === 'unsaved' ? 'text-yellow-600' : saveStatus === 'saving' ? 'text-gray-500' : 'text-gray-700'}`}>
             {saveStatus === 'saving' ? 'saving…' : saveStatus}
           </span>
         )}
-        {devStatus === 'running' && (
-          <span className="text-[10px] font-mono text-green-600 border border-green-900 rounded px-1.5 py-0.5 hidden xl:flex items-center gap-1">
+        {devStatus === 'running' && devUrl && (
+          <button onClick={() => api.openLocalUrl(devUrl)} title="Open in browser"
+            className="text-[10px] font-mono text-green-500 border border-green-900 hover:bg-green-900/30 rounded px-1.5 py-0.5 flex items-center gap-1 transition-all">
             <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse inline-block" />
-            {devUrl}
-          </span>
+            <span className="hidden xl:inline">{devUrl}</span> ↗
+          </button>
         )}
         {projectFolder && devScripts.length > 0 && (
           <select
@@ -641,19 +459,9 @@ export default function App() {
           disabled={!projectFolder || devStatus === 'starting'}
           extra={devStatus === 'running' ? 'text-red-400' : devStatus === 'error' ? 'text-orange-400' : 'text-green-400'}
         />
-        {bridgeStatus === 'connected' && (
-          <button
-            title={liveEditMode ? 'Edit mode — click to select objects' : 'Play mode — interacting with game normally'}
-            onClick={() => { setLiveEditMode(m => !m); setBridgeScreenBounds(null); }}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium border transition-all ${
-              liveEditMode
-                ? 'border-yellow-500 bg-yellow-900/40 text-yellow-300'
-                : 'border-gray-700 text-gray-400 hover:bg-gray-700'}`}>
-            {liveEditMode ? '🎯 Edit' : '🎮 Play'}
-          </button>
-        )}
+        {liveUrl && <LiveModeToggle live={live} />}
         <ToolBtn icon="⌨" label="VS Code" onClick={() => projectFolder && api.openVSCode(projectFolder)} disabled={!projectFolder} />
-        <ToolBtn icon="💾" label="Save (Ctrl+S)" onClick={handleSave} disabled={!projectFolder || !!devUrl} />
+        <ToolBtn icon="💾" label="Save (Ctrl+S)" onClick={handleSave} disabled={!projectFolder || !!liveUrl} />
       </header>
 
       <div className="flex flex-1 overflow-hidden">
@@ -663,63 +471,8 @@ export default function App() {
           onDragOver={isDraggingAsset ? e => e.preventDefault() : undefined}
           onDrop={isDraggingAsset ? handleDropOnHierarchy : undefined}
         >
-          {devUrl ? (
-            <aside className="flex flex-col border-r border-gray-700 bg-gray-800 h-full overflow-hidden">
-              <div className="px-3 py-2 border-b border-gray-700 flex items-center gap-2 flex-shrink-0">
-                <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex-1">Hierarchy</span>
-                <span className={`text-[10px] px-1.5 py-0.5 rounded flex items-center gap-1 ${
-                  bridgeStatus === 'connected' ? 'bg-green-900/50 text-green-400' :
-                  bridgeStatus === 'connecting' ? 'bg-yellow-900/50 text-yellow-400' :
-                  'bg-gray-700 text-gray-500'}`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${
-                    bridgeStatus === 'connected' ? 'bg-green-400' :
-                    bridgeStatus === 'connecting' ? 'bg-yellow-400 animate-pulse' : 'bg-gray-500'}`} />
-                  {bridgeStatus}
-                </span>
-              </div>
-              {bridgeScenes.length > 0 && (
-                <div className="px-2 py-1.5 border-b border-gray-700 flex-shrink-0">
-                  <select value={activeBridgeScene ?? ''} onChange={e => changeLiveScene(e.target.value)}
-                    className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 focus:outline-none focus:border-blue-500">
-                    {bridgeScenes.map(s => (
-                      <option key={s.key} value={s.key}>{s.key}{s.active ? ' ●' : ''}</option>
-                    ))}
-                  </select>
-                  <button onClick={() => activeBridgeScene && requestBridgeObjects(activeBridgeScene)}
-                    className="mt-1 w-full text-[10px] text-gray-600 hover:text-gray-300 transition-colors">↺ Refresh</button>
-                </div>
-              )}
-              <div className="flex-1 overflow-y-auto py-1">
-                {bridgeStatus !== 'connected' ? (
-                  <div className="p-4 text-center">
-                    <p className="text-xs text-gray-500 mb-3 leading-relaxed">
-                      {bridgeStatus === 'connecting' ? 'Connecting to game bridge…' : 'Bridge not detected in game.'}
-                    </p>
-                    <button onClick={installBridge}
-                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded transition-colors">
-                      Install Bridge
-                    </button>
-                  </div>
-                ) : !bridgeHasGame ? (
-                  <div className="p-4 text-xs text-gray-500 leading-relaxed">
-                    <p className="mb-2">Bridge is loaded but can't find your Phaser.Game. Pass it once from your entry file:</p>
-                    <code className="block bg-gray-900 rounded px-2 py-1.5 text-[10px] text-gray-300 font-mono select-text">installForgeBridge(game);</code>
-                  </div>
-                ) : bridgeObjects.length === 0 ? (
-                  <p className="text-xs text-gray-600 text-center py-6">No objects in scene.</p>
-                ) : (
-                  bridgeObjects.map(obj => (
-                    <div key={obj.id} onClick={() => selectLiveObject(obj)}
-                      className={`flex items-center gap-2 px-3 py-1.5 mx-1 rounded text-xs cursor-pointer transition-colors ${
-                        bridgeSelectedId === obj.id ? 'bg-gray-700 text-white' : 'text-gray-400 hover:bg-gray-700/60 hover:text-gray-200'}`}>
-                      <span className="opacity-50 truncate max-w-16">{obj.type}</span>
-                      <span className="truncate flex-1">{liveLabel(obj)}</span>
-                      <span className="text-[9px] text-gray-600 font-mono">{Math.round(obj.x)},{Math.round(obj.y)}</span>
-                    </div>
-                  ))
-                )}
-              </div>
-            </aside>
+          {liveUrl ? (
+            <LiveHierarchy live={live} />
           ) : (
             <HierarchyPanel
               items={hierarchy} selectedId={selectedId}
@@ -748,36 +501,10 @@ export default function App() {
             </div>
           )}
 
-          {devUrl && bridgeStatus === 'connected' && liveEditMode && !isDraggingAsset && (
-            <div
-              ref={overlayRef}
-              className="absolute inset-0 z-10 cursor-crosshair"
-              onClick={handleLiveClick}
-              onPointerDown={handleLivePointerDown}
-              onPointerMove={handleLivePointerMove}
-              onPointerUp={handleLivePointerUp}
-              onPointerCancel={() => { liveDragRef.current = null; }}
-            >
-              {bridgeScreenBounds && bridgeScreenBounds.width > 0 && bridgeScreenBounds.height > 0 && (
-                <div
-                  className="absolute border border-blue-400 shadow-[0_0_0_3px_rgba(59,130,246,0.25)] pointer-events-none"
-                  style={{
-                    left: bridgeScreenBounds.x,
-                    top: bridgeScreenBounds.y,
-                    width: bridgeScreenBounds.width,
-                    height: bridgeScreenBounds.height,
-                  }}
-                >
-                  {['-top-1 -left-1', '-top-1 -right-1', '-bottom-1 -left-1', '-bottom-1 -right-1'].map(pos => (
-                    <div key={pos} className={`absolute ${pos} w-2 h-2 bg-white border border-blue-500`} />
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+          {liveUrl && live.bridgeStatus === 'connected' && live.liveEditMode && !isDraggingAsset && <LiveOverlay live={live} />}
 
           <div className="absolute top-3 left-3 flex items-center gap-2 pointer-events-none">
-            {devUrl ? (
+            {liveUrl ? (
               <span className="bg-green-900/90 backdrop-blur text-green-300 text-xs px-2 py-1 rounded uppercase tracking-wider border border-green-700 flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
                 LIVE
@@ -785,9 +512,9 @@ export default function App() {
             ) : (
               <span className="bg-gray-900/80 backdrop-blur text-gray-300 text-xs px-2 py-1 rounded uppercase tracking-wider border border-gray-700">{toolMode}</span>
             )}
-            {!devUrl && snapEnabled && <span className="bg-blue-900/80 backdrop-blur text-blue-300 text-xs px-2 py-1 rounded border border-blue-700">SNAP 32px</span>}
+            {!liveUrl && snapEnabled && <span className="bg-blue-900/80 backdrop-blur text-blue-300 text-xs px-2 py-1 rounded border border-blue-700">SNAP 32px</span>}
           </div>
-          {!devUrl && (
+          {!liveUrl && (
             <div className="absolute bottom-3 left-3 text-gray-700 text-[10px] pointer-events-none">
               Q·W·E·R = tools &nbsp;·&nbsp; Scroll = zoom &nbsp;·&nbsp; Middle mouse = pan &nbsp;·&nbsp; F = reset view &nbsp;·&nbsp; Del = delete
             </div>
@@ -799,48 +526,11 @@ export default function App() {
         <aside style={{ width: inspectorW }} className="flex-shrink-0 flex flex-col border-l border-gray-700 bg-gray-800 overflow-y-auto">
           <div className="px-3 py-2 border-b border-gray-700 flex items-center justify-between">
             <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Inspector</span>
-            {devUrl && <span className="text-[10px] text-green-600 font-medium">LIVE</span>}
+            {liveUrl && <span className="text-[10px] text-green-600 font-medium">LIVE</span>}
           </div>
 
-          {devUrl ? (
-            bridgeSelected ? (
-              <div className="p-3 space-y-4 text-sm">
-                <div className="bg-gray-900 rounded px-3 py-2">
-                  <div className="text-[10px] text-gray-500 mb-0.5">Type / Name</div>
-                  <div className="text-xs text-white font-mono truncate">{bridgeSelected.type} — {liveLabel(bridgeSelected)}</div>
-                  {bridgeSelected.textureKey && <div className="text-[10px] text-gray-500 mt-0.5">Texture: {bridgeSelected.textureKey}</div>}
-                </div>
-                <section>
-                  <div className="section-label mb-2">Position</div>
-                  <InspectorField label="X" value={Math.round(bridgeSelected.x)} step={1} onChange={v => setLiveProp('x', v)} />
-                  <InspectorField label="Y" value={Math.round(bridgeSelected.y)} step={1} onChange={v => setLiveProp('y', v)} />
-                  {bridgeSelected.displayWidth !== undefined && <div className="text-[10px] text-gray-600 text-right">display: {bridgeSelected.displayWidth}×{bridgeSelected.displayHeight}px</div>}
-                </section>
-                <section>
-                  <div className="section-label mb-2">Rotation</div>
-                  <InspectorField label="Angle (rad)" value={round2(bridgeSelected.rotation)} onChange={v => setLiveProp('rotation', v)} />
-                  <div className="text-[10px] text-gray-600 text-right -mt-1">{Math.round((bridgeSelected.rotation * 180) / Math.PI)}°</div>
-                </section>
-                <section>
-                  <div className="section-label mb-2">Scale</div>
-                  <InspectorField label="Scale X" value={round2(bridgeSelected.scaleX)} min={0} onChange={v => setLiveProp('scaleX', v)} />
-                  <InspectorField label="Scale Y" value={round2(bridgeSelected.scaleY)} min={0} onChange={v => setLiveProp('scaleY', v)} />
-                </section>
-                <section>
-                  <div className="section-label mb-2">Appearance</div>
-                  <InspectorField label="Alpha" value={round2(bridgeSelected.alpha)} min={0} max={1} onChange={v => setLiveProp('alpha', v)} />
-                  <InspectorField label="Depth" value={bridgeSelected.depth} step={1} onChange={v => setLiveProp('depth', v)} />
-                  <InspectorField label="Visible" value={bridgeSelected.visible} type="checkbox" onChange={v => setLiveProp('visible', v)} />
-                </section>
-              </div>
-            ) : (
-              <div className="flex-1 flex flex-col items-center justify-center text-center p-6">
-                <div className="text-4xl mb-3 opacity-20">🎮</div>
-                <p className="text-xs text-gray-500 leading-relaxed">
-                  {bridgeStatus === 'connected' ? 'Click an object in the hierarchy.' : 'Waiting for bridge connection…'}
-                </p>
-              </div>
-            )
+          {liveUrl ? (
+            <LiveInspector live={live} />
           ) : selectedId ? (
             <Inspector selectedId={selectedId} onEdit={updateField} onDelete={deleteObject} />
           ) : (
