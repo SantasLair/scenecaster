@@ -30,7 +30,7 @@ export type EditorToViewport =
   | { type: 'DESELECT_ALL' }
   | { type: 'RESET_SCENE' }
   | { type: 'SELECT_OBJECT'; id: string }
-  | ({ type: 'SET_PROPERTIES'; id: string } & Partial<ObjectProps>)
+  | ({ type: 'SET_PROPERTIES'; id: string; anchor?: Anchor | null } & Partial<ObjectProps>)
   | { type: 'DELETE_OBJECT'; id: string }
   | { type: 'LOAD_SCENE'; objects: LoadSceneObject[] }
   | { type: 'ADD_OBJECT'; object: LoadSceneObject; select: boolean }

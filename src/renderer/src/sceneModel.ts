@@ -144,6 +144,7 @@ export function setOrder(objects: SceneObject[]) {
 /** Neutral per-object fields that are not in the property table. */
 export function setMeta(id: string, meta: Partial<Pick<SceneObject, 'anchor' | 'interactive'>>) {
   bump({ ...get().doc, objects: get().doc.objects.map(o => o.id === id ? { ...o, ...meta } : o) });
+  if (meta.anchor !== undefined) sink({ type: 'SET_PROPERTIES', id, anchor: meta.anchor });
 }
 
 /** Changes properties in the model; `toView` also tells the viewport (false when the viewport made the change). */

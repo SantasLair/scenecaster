@@ -1,8 +1,9 @@
 import * as Phaser from 'phaser';
 import { PROP_KEYS, describe, type ObjectProps } from '../../shared/props';
+import { resolveAnchor, toOffset } from '../../shared/anchor';
 import {
   isMessage, unhandled,
-  type EditorToViewport, type ViewportToEditor, type LoadSceneObject, type Shape, type ToolMode,
+  type EditorToViewport, type ViewportToEditor, type Anchor, type LoadSceneObject, type Shape, type ToolMode,
 } from '../../shared/protocol';
 
 const params = new URLSearchParams(window.location.search);
@@ -14,6 +15,7 @@ const ROT_RADIUS = 60;
 const HANDLE_SZ = 14;
 const GRID = 32;
 const PRIMITIVE_SZ = 64;
+const CANVAS = { w: CANVAS_W, h: CANVAS_H };
 
 type Sprite = Phaser.GameObjects.Sprite;
 
@@ -21,6 +23,8 @@ const post = (msg: ViewportToEditor) => window.parent.postMessage(msg, '*');
 
 class EditorScene extends Phaser.Scene {
   private sprites = new Map<string, Sprite>();
+  /** Anchor per object: the scene stores offsets, this view resolves them against the canvas. */
+  private anchors = new Map<string, Anchor | null>();
 
   private selectedSprite: Sprite | null = null;
   private selectedId: string | null = null;
@@ -104,7 +108,7 @@ class EditorScene extends Phaser.Scene {
       if (!id || this.lockedIds.has(id)) return;
       s.x = this.snap(dragX);
       s.y = this.snap(dragY);
-      post({ type: 'OBJECT_TRANSFORMED', id, x: s.x, y: s.y });
+      post({ type: 'OBJECT_TRANSFORMED', id, ...this.offsetOf(id, s) });
     });
     this.input.on('dragend', (_p: Phaser.Input.Pointer, go: Phaser.GameObjects.GameObject) => {
       if (!handles.includes(go)) post({ type: 'PUSH_HISTORY' });
@@ -190,7 +194,7 @@ class EditorScene extends Phaser.Scene {
 
       case 'SET_PROPERTIES': {
         const s = this.sprites.get(m.id);
-        if (s) this.applyProps(s, m);
+        if (s) this.applyProps(m.id, s, m);
         break;
       }
 
@@ -200,6 +204,7 @@ class EditorScene extends Phaser.Scene {
         if (this.selectedSprite === s) this.deselect();
         s.destroy();
         this.sprites.delete(m.id);
+        this.anchors.delete(m.id);
         break;
       }
 
@@ -227,8 +232,9 @@ class EditorScene extends Phaser.Scene {
 
   private createObject(obj: LoadSceneObject, select: boolean) {
     const add = (texture: string) => {
-      const spr = this.add.sprite(obj.x, obj.y, texture);
-      this.applyProps(spr, obj);
+      const spr = this.add.sprite(0, 0, texture);
+      this.anchors.set(obj.id, obj.anchor);
+      this.applyProps(obj.id, spr, obj);
       spr.setInteractive({ draggable: true });
       this.sprites.set(obj.id, spr);
       if (select) this.selectSprite(obj.id, spr);
@@ -241,6 +247,7 @@ class EditorScene extends Phaser.Scene {
     this.deselect();
     for (const spr of this.sprites.values()) spr.destroy();
     this.sprites.clear();
+    this.anchors.clear();
   }
 
   private primitiveTexture(shape: Shape) {
@@ -272,18 +279,30 @@ class EditorScene extends Phaser.Scene {
   }
 
   /** Reads every table property from the sprite (descriptor `get`, else `sprite[key]`). */
-  private serialize(spr: Sprite): ObjectProps {
+  private serialize(id: string, spr: Sprite): ObjectProps {
     const out: Partial<Record<keyof ObjectProps, unknown>> = {};
     for (const k of PROP_KEYS) {
       const d = describe(k);
       out[k] = d.get ? d.get(spr) : (spr as unknown as Record<string, unknown>)[k];
     }
-    return out as ObjectProps;
+    return { ...(out as ObjectProps), ...this.offsetOf(id, spr) };
   }
 
-  /** Applies only the props present in `p` (descriptor `set`, else assigns `sprite[key]`). */
-  private applyProps(s: Sprite, p: Partial<ObjectProps>) {
+  /** The sprite's x/y as the offset stored in the scene (from its anchor point). */
+  private offsetOf(id: string, s: Sprite) {
+    return toOffset(this.anchors.get(id) ?? null, s, CANVAS);
+  }
+
+  /** Applies only the props present in `p` (descriptor `set`, else assigns `sprite[key]`). x/y are anchor offsets; `anchor` re-pins. */
+  private applyProps(id: string, s: Sprite, p: Partial<ObjectProps> & { anchor?: Anchor | null }) {
+    if (p.x !== undefined || p.y !== undefined || p.anchor !== undefined) {
+      const cur = this.offsetOf(id, s);
+      if (p.anchor !== undefined) this.anchors.set(id, p.anchor);
+      const abs = resolveAnchor(this.anchors.get(id) ?? null, { x: p.x ?? cur.x, y: p.y ?? cur.y }, CANVAS);
+      s.setPosition(abs.x, abs.y);
+    }
     for (const k of PROP_KEYS) {
+      if (k === 'x' || k === 'y') continue;
       const v = p[k];
       if (v === undefined) continue;
       const d = describe(k);
@@ -390,7 +409,7 @@ class EditorScene extends Phaser.Scene {
   private selectSprite(id: string, spr: Sprite) {
     this.selectedSprite = spr;
     this.selectedId = id;
-    post({ type: 'OBJECT_SELECTED', id, ...this.serialize(spr), texW: spr.width, texH: spr.height });
+    post({ type: 'OBJECT_SELECTED', id, ...this.serialize(id, spr), texW: spr.width, texH: spr.height });
   }
 
   private deselect() {
@@ -402,7 +421,7 @@ class EditorScene extends Phaser.Scene {
   private notifyTransform() {
     const s = this.selectedSprite;
     if (!s || !this.selectedId) return;
-    post({ type: 'OBJECT_TRANSFORMED', id: this.selectedId, x: s.x, y: s.y, rotation: s.rotation, scaleX: s.scaleX, scaleY: s.scaleY });
+    post({ type: 'OBJECT_TRANSFORMED', id: this.selectedId, ...this.offsetOf(this.selectedId, s), rotation: s.rotation, scaleX: s.scaleX, scaleY: s.scaleY });
   }
 }
 
