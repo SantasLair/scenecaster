@@ -139,7 +139,7 @@ npm run dev
 
 ## Roadmap
 
-See [docs/ROADMAP-LITE.md](docs/ROADMAP-LITE.md). Next up: a more reliable scene file (multiple scenes, reload when it changes on disk) and importing assets into your project from the editor. The earlier [docs/ROADMAP.md](docs/ROADMAP.md) is the original plan this one replaces.
+See [docs/ROADMAP.md](docs/ROADMAP.md). Next up: a more reliable scene file (multiple scenes, reload when it changes on disk) and importing assets into your project from the editor. The earlier [docs/ROADMAP.md](docs/ROADMAP.md) is the original plan this one replaces.
 
 ---
 

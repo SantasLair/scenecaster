@@ -47,7 +47,7 @@ export type ViewportToEditor =
   | { type: 'OBJECT_ADDED'; id: string; name: string; objType: string; visible: boolean; loaded: boolean }
   | { type: 'SCENE_STATE'; objects: SceneObject[] };
 
-// ---- Live bridge, v0.3 (src/bridge/phaser-forge-bridge.js; docs/ROADMAP.md "Bridge Protocol").
+// ---- Live bridge, v0.3 (src/bridge/phaser-forge-bridge.js).
 // The bridge .d.ts ships into user projects and cannot import this file; keep the two in sync by hand.
 export interface ScreenRect { x: number; y: number; width: number; height: number }
 export interface BridgeScene { key: string; active: boolean; visible: boolean }
