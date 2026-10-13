@@ -29,21 +29,21 @@
     <rect width="256" height="256" fill="url(#grid)"/>
   </g>
   <polygon points="29,2 227,2 254,29 254,227 227,254 29,254 2,227 2,29" fill="none" stroke="url(#frame)" stroke-opacity=".4" stroke-width="3"/>
-  <g transform="translate(-6 0)" fill="none" stroke-linecap="butt" stroke-linejoin="miter" stroke-miterlimit="10">
+  <g transform="translate(-10 0)" fill="none" stroke-linecap="butt" stroke-linejoin="miter" stroke-miterlimit="10">
     <!-- glow -->
     <g stroke-width="24" opacity=".55" filter="url(#glow)">
-      <path d="M106 90 H68 L54 104 V118 L68 132 H92 L106 146 V160 L92 174 H54" stroke="url(#s)"/>
-      <path d="M214 90 H160 L136 114 V150 L160 174 H214" stroke="url(#c)"/>
+      <path d="M116 112 L108 88 H64 L52 116 L106 144 L94 174 H48 L40 152" stroke="url(#s)"/>
+      <path d="M222 90 H168 L144 114 V150 L168 174 H222" stroke="url(#c)"/>
     </g>
     <!-- S and C -->
     <g stroke-width="20">
-      <path d="M106 90 H68 L54 104 V118 L68 132 H92 L106 146 V160 L92 174 H54" stroke="url(#s)"/>
-      <path d="M214 90 H160 L136 114 V150 L160 174 H214" stroke="url(#c)"/>
+      <path d="M116 112 L108 88 H64 L52 116 L106 144 L94 174 H48 L40 152" stroke="url(#s)"/>
+      <path d="M222 90 H168 L144 114 V150 L168 174 H222" stroke="url(#c)"/>
     </g>
     <!-- selection handles -->
     <g fill="#fff" stroke="none">
-      <rect x="210" y="84" width="9" height="9"/>
-      <rect x="210" y="171" width="9" height="9"/>
+      <rect x="218" y="84" width="9" height="9"/>
+      <rect x="218" y="171" width="9" height="9"/>
     </g>
   </g>
 </svg>
