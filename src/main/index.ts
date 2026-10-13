@@ -135,7 +135,7 @@ function createWindow(): void {
     title: 'Scenecaster',
     icon: APP_ICON,
     titleBarStyle: 'hiddenInset',
-    backgroundColor: '#0f1117',
+    backgroundColor: '#07061a',
   });
 
   if (process.env['ELECTRON_RENDERER_URL']) mainWin.loadURL(process.env['ELECTRON_RENDERER_URL']);

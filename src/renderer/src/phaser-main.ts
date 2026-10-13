@@ -51,7 +51,7 @@ class EditorScene extends Phaser.Scene {
   constructor() { super('EditorScene'); }
 
   create() {
-    this.cameras.main.setBackgroundColor('#0f1117');
+    this.cameras.main.setBackgroundColor('#07061a');
     this.drawCanvasFrame();
 
     this.selGfx = this.add.graphics().setDepth(997);
