@@ -73,12 +73,18 @@ function readJson(file: string) {
   }
 }
 
-function writeJson(file: string, data: unknown) {
+/** Atomic write: temp file + rename, keeping the previous good file as <file>.bak. Never leaves a half-written file. */
+function writeJson(file: string, data: unknown): { ok: boolean; error?: string } {
+  const tmp = `${file}.tmp`;
   try {
-    fs.writeFileSync(file, JSON.stringify(data, null, 2));
-    return true;
-  } catch {
-    return false;
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
+    if (fs.existsSync(file)) fs.copyFileSync(file, `${file}.bak`);
+    fs.renameSync(tmp, file);
+    return { ok: true };
+  } catch (e) {
+    try { fs.rmSync(tmp, { force: true }); } catch { /* best effort */ }
+    return { ok: false, error: (e as Error).message };
   }
 }
 
@@ -272,26 +278,44 @@ app.whenReady().then(() => {
     }
   });
 
-  // Legacy file names kept for now (renamed in a later phase).
-  const SCENE_FILE = 'forge-scene.json';
-  const CONFIG_FILE = '.phaser-forge.json';
+  /** `<folder>/scenecaster/<rel>`, guarded. The directory need not exist yet (created on first write). */
+  const projectFile = (folder: unknown, ...rel: string[]) => {
+    const dir = guardFolder(folder);
+    return dir ? guardPath(path.join(dir, PROJECT_DIR, ...rel)) : null;
+  };
+  const sceneFile = (folder: unknown, name: unknown) =>
+    typeof name === 'string' && SCENE_NAME_RE.test(name) ? projectFile(folder, SCENES_DIR, name + SCENE_EXT) : null;
 
-  ipcMain.handle('scene:save', (_e, folder: unknown, objects: object[]) => {
-    const file = guardFile(folder, SCENE_FILE);
-    return file ? writeJson(file, { version: 1, objects }) : false;
+  ipcMain.handle('scene:save', (_e, folder: unknown, name: unknown, objects: unknown) => {
+    const file = sceneFile(folder, name);
+    if (!file || !Array.isArray(objects)) return { ok: false, error: 'Invalid scene name or folder.' };
+    return writeJson(file, { version: 1, key: name, objects });
   });
-  ipcMain.handle('scene:load', (_e, folder: unknown) => {
-    const file = guardFile(folder, SCENE_FILE);
-    return file ? readJson(file) : null;
+  // Returns { data, legacy }: legacy=true means the data came from the old forge-scene.json (left untouched on disk).
+  ipcMain.handle('scene:load', (_e, folder: unknown, name: unknown) => {
+    const file = sceneFile(folder, name);
+    const data = file ? readJson(file) : null;
+    if (data) return { data, legacy: false };
+    const legacy = guardFile(folder, LEGACY_SCENE_FILE);
+    const old = legacy ? readJson(legacy) : null;
+    return old ? { data: old, legacy: true } : null;
   });
 
+  // project.json holds game settings; the renderer sees the flat ProjectConfig shape.
   ipcMain.handle('project:readConfig', (_e, folder: unknown) => {
-    const file = guardFile(folder, CONFIG_FILE);
-    return file ? readJson(file) : null;
+    const file = projectFile(folder, PROJECT_FILE);
+    const cfg = file ? readJson(file) : null;
+    if (cfg?.game?.width && cfg?.game?.height) {
+      return { canvasWidth: cfg.game.width, canvasHeight: cfg.game.height, devScript: cfg.devScript };
+    }
+    const legacy = guardFile(folder, LEGACY_CONFIG_FILE);
+    const old = legacy ? readJson(legacy) : null;
+    return old ? { ...old, legacy: true } : null;
   });
-  ipcMain.handle('project:writeConfig', (_e, folder: unknown, config: object) => {
-    const file = guardFile(folder, CONFIG_FILE);
-    return file ? writeJson(file, config) : false;
+  ipcMain.handle('project:writeConfig', (_e, folder: unknown, config: { canvasWidth: number; canvasHeight: number; devScript?: string }) => {
+    const file = projectFile(folder, PROJECT_FILE);
+    if (!file || !(config?.canvasWidth > 0) || !(config?.canvasHeight > 0)) return { ok: false, error: 'Invalid project config.' };
+    return writeJson(file, { version: 1, game: { width: config.canvasWidth, height: config.canvasHeight }, devScript: config.devScript });
   });
 
   // Dev-server scripts only: `dev`, `dev:*`, and variants like `engine:dev:fantasy`.

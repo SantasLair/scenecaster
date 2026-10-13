@@ -67,13 +67,13 @@ Effort: **S** (under a day) · **M** (a few days) · **L** (a week or more).
 ### Phase 1 — A scene file you and an AI can both trust
 - [ ] **M** Scene model in the renderer; Phaser is a view (architecture item 5)
 - [ ] **M** Command-based history; add/delete/duplicate/rename become undoable
-- [ ] **S** Move scene storage to `scenecaster/scenes/<name>.scene.json`
+- [x] **S** Move scene storage to `scenecaster/scenes/<name>.scene.json`
 - [ ] **S** **Naming:** the folder name is one constant in the editor. `MIGRATE.md`, `check.mjs`, the README and the `CLAUDE.md` pointer are generated from it, so a future rename is a one-line change. The folder is a normal (not hidden) directory, because many search tools skip dot-folders.
 - [ ] **S** **Legacy migration:** read the old `forge-scene.json` and `.phaser-forge.json` for one release and offer to move them into `scenecaster/` (scene file, `project.json`). Remove the old files only after the move is confirmed.
 - [ ] **S** AI-friendly format: relative asset paths, `version`, unique readable `name` per object, UUID `id` kept, `parentId`, stable key order, one object per few lines for clean diffs
 - [ ] **S** Scene `key` field that must match the Phaser scene key, plus an `overlay` flag (the scene draws over another, so the editor shows a neutral backdrop and the canvas size comes from the game)
 - [ ] **S** Project root discovery: Open Project finds the nearest `package.json` (e.g. `dungeon-strategy/game`) or lets you pick it; remembers it
-- [ ] **S** Write nothing on open. Today the canvas-size prompt writes `.phaser-forge.json` immediately; defer that until a setting changes or something is saved.
+- [x] **S** Write nothing on open. Today the canvas-size prompt writes `.phaser-forge.json` immediately; defer that until a setting changes or something is saved.
 - [ ] **M** **`scenecaster/project.json`** (the project's metadata, read by both the editor and, once adopted, the game):
   - game settings: canvas size, scale mode, physics, background colour, Phaser version
   - scene registry: key, kind (`visual` / `logic` / `overlay`), layout file if any, boot order

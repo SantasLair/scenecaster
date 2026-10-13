@@ -8,9 +8,10 @@ import Inspector from './components/Inspector';
 import { InspectorField, ToolBtn, SetupDialog } from './components/Controls';
 import { beginDrag, clamp } from './beginDrag';
 import { readWireProps, round2 } from '../../shared/props';
+import { DEFAULT_SCENE } from '../../shared/layout';
 import {
   isMessage, isForge, unhandled,
-  type ToolMode, type LiveProp, type BridgeObject, type ScreenRect, type BridgeScene, type AssetPayload,
+  type ToolMode, type LiveProp, type BridgeObject, type ScreenRect, type BridgeScene, type AssetPayload, type SceneObject,
   type EditorToViewport, type EditorToBridge, type BridgeToEditor, type Forge,
 } from '../../shared/protocol';
 
@@ -83,6 +84,8 @@ export default function App() {
 
   const pingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pendingSaveRef = useRef(false);
+  /** True once scenecaster/project.json exists; opening a project writes nothing, the first save or setting change does. */
+  const configPersistedRef = useRef(false);
   const pendingLoadFolderRef = useRef<string | null>(null);
   const liveDragRef = useRef<{
     id: string; pointerId: number;
@@ -218,9 +221,23 @@ export default function App() {
     send({ type: 'GET_SCENE_STATE' });
   };
 
+  /** A failed save keeps the scene dirty and says why; the previous good file is never replaced by a partial one. */
+  const saveSceneFiles = async (folder: string, objects: SceneObject[]) => {
+    const fail = (error?: string) => { setSaveStatus('unsaved'); appendLog(`\n[Save failed: ${error ?? 'Unknown error'}]\n`); showConsole(); };
+    if (!configPersistedRef.current) {
+      const cfg = await api.writeProjectConfig(folder, { canvasWidth: canvasSize.w, canvasHeight: canvasSize.h, devScript: selectedScript });
+      if (!cfg.ok) return fail(cfg.error);
+      configPersistedRef.current = true;
+    }
+    const r = await api.saveScene(folder, DEFAULT_SCENE, objects);
+    if (r.ok) setSaveStatus('saved'); else fail(r.error);
+  };
+
   const loadScene = async (folder: string) => {
-    const data = await api.loadScene(folder);
+    const loaded = await api.loadScene(folder, DEFAULT_SCENE);
     setSaveStatus('saved');
+    if (loaded?.legacy) appendLog('\n[Loaded legacy forge-scene.json; the next save writes scenecaster/scenes/main.scene.json. The old file is left untouched.]\n');
+    const data = loaded?.data;
     if (!data?.objects?.length) return;
     const objects = await Promise.all(data.objects.map(async obj =>
       obj.kind === 'sprite' && obj.assetFullPath
@@ -243,7 +260,8 @@ export default function App() {
   const changeScript = (script: string) => {
     setSelectedScript(script);
     if (projectFolder) {
-      api.writeProjectConfig(projectFolder, { canvasWidth: canvasSize.w, canvasHeight: canvasSize.h, devScript: script });
+      api.writeProjectConfig(projectFolder, { canvasWidth: canvasSize.w, canvasHeight: canvasSize.h, devScript: script })
+        .then(r => { configPersistedRef.current = r.ok; });
     }
   };
 
@@ -283,9 +301,10 @@ export default function App() {
     showConsole();
   };
 
-  const openProject = async (folder: string, config: ProjectConfig) => {
+  const openProject = async (folder: string, config: ProjectConfig, persisted: boolean) => {
     if (devStatus !== 'idle') await stopDev();
     loadDevScripts(folder, config.devScript);
+    configPersistedRef.current = persisted;
     setProjectFolder(folder);
     setCanvasSize({ w: config.canvasWidth, h: config.canvasHeight });
     setHierarchy([]);
@@ -301,7 +320,7 @@ export default function App() {
     const folder = await api.openFolder();
     if (!folder) return;
     const config = await api.readProjectConfig(folder);
-    if (config?.canvasWidth && config?.canvasHeight) openProject(folder, config);
+    if (config?.canvasWidth && config?.canvasHeight) openProject(folder, config, !config.legacy);
     else setPendingSetupFolder(folder);
   };
 
@@ -310,8 +329,7 @@ export default function App() {
     if (!folder) return;
     setPendingSetupFolder(null);
     const config = { canvasWidth: w, canvasHeight: h };
-    await api.writeProjectConfig(folder, config);
-    openProject(folder, config);
+    openProject(folder, config, false);
   };
 
   const readDroppedAsset = (e: React.DragEvent): AssetPayload | null => {
@@ -503,7 +521,7 @@ export default function App() {
         if (!pendingSaveRef.current || !projectFolder) break;
         pendingSaveRef.current = false;
         setSaveStatus('saving');
-        api.saveScene(projectFolder, m.objects).then(ok => setSaveStatus(ok ? 'saved' : 'unsaved'));
+        saveSceneFiles(projectFolder, m.objects);
         break;
       default: unhandled(m);
     }
