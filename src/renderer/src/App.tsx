@@ -8,7 +8,7 @@ import ObjectsPanel from './components/ObjectsPanel';
 import AssetBrowser from './components/AssetBrowser';
 import Inspector from './components/Inspector';
 import ProblemsPanel from './components/ProblemsPanel';
-import { ToolBtn, SetupDialog } from './components/Controls';
+import { ToolBtn, SetupDialog, ScenePicker } from './components/Controls';
 import Dock, { DockContext, resetLayout, type DockCtx } from './Dock';
 import type { DockviewApi } from 'dockview-react';
 import { LIVE_MODE } from './live/config';
@@ -63,7 +63,7 @@ export default function App() {
     onForgeMessage: m => { if (LIVE_MODE) live.onBridgeMessage(m); },
   });
   const {
-    objectItems, reorderObject, updateMeta, toolMode, saveStatus, saveBlocked, sceneStatus, createScene, problems, addPrimitive, dropAsset, setTool, toggleSnap, undo, redo, updateField, commitEdit, selectObject,
+    objectItems, scenes, sceneKey, openScene, reorderObject, updateMeta, toolMode, saveStatus, saveBlocked, sceneStatus, createScene, problems, addPrimitive, dropAsset, setTool, toggleSnap, undo, redo, updateField, commitEdit, selectObject,
     deleteObject, duplicateObject, renameObject, toggleVisible, toggleLocked, handleSave,
   } = scene;
 
@@ -189,7 +189,7 @@ export default function App() {
           <iframe ref={iframeRef} src={iframeSrc} className="w-full h-full border-none" title="Phaser Viewport" />
         ) : (
           <ViewportPlaceholder ui={ui} error={problems.find(p => p.level === 'error')?.message}
-            onOpenProject={handleOpenProject} onNewScene={createScene} />
+            onOpenProject={handleOpenProject} onNewScene={() => createScene()} />
         )}
         {isDraggingAsset && (
           <div className="absolute inset-0 z-10 cursor-copy" onDragOver={e => e.preventDefault()} onDrop={handleDropOnViewport}>
@@ -237,6 +237,11 @@ export default function App() {
 
         {projectFolder && <button onClick={handleCloseProject} title="Close Project"
           className="px-2 py-1.5 rounded text-xs text-gray-400 hover:bg-gray-700 hover:text-white border border-gray-700 mr-1">✕ <span className="hidden xl:inline">Close</span></button>}
+
+        {projectFolder && !liveUrl && (
+          <ScenePicker scenes={scenes} current={sceneKey} hasFile={sceneStatus === 'open' || sceneStatus === 'blocked'}
+            onOpen={openScene} onCreate={createScene} />
+        )}
 
         <div className="w-px h-5 bg-gray-700 mr-1" />
 

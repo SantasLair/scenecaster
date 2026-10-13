@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { SCENE_NAME_RE } from '../../../shared/layout';
 
 interface FieldProps {
   label: string;
@@ -107,6 +108,36 @@ export function SetupDialog({ onConfirm, onCancel }: {
           <button onClick={() => onConfirm(w, h)} className="px-4 py-1.5 rounded text-xs bg-blue-600 hover:bg-blue-500 text-white font-medium transition-colors">Open Project</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Scene selector: the project's scenes (one layout file per scene key) and an inline "new scene" field. */
+export function ScenePicker({ scenes, current, hasFile, onOpen, onCreate }: {
+  scenes: SceneEntry[]; current: string; hasFile: boolean; onOpen: (key: string) => void; onCreate: (key: string) => void;
+}) {
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState('');
+  const taken = scenes.some(s => s.key.toLowerCase() === name.toLowerCase());
+  const valid = SCENE_NAME_RE.test(name) && !taken;
+  const submit = () => { if (valid) { onCreate(name); setAdding(false); setName(''); } };
+  const keys = scenes.some(s => s.key === current) ? scenes : [...scenes, { key: current, hasFile }];
+  return (
+    <div className="flex items-center gap-1 mr-1">
+      {adding ? (
+        <input autoFocus value={name} placeholder="scene key" onChange={e => setName(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') submit(); else if (e.key === 'Escape') { setAdding(false); setName(''); } }}
+          onBlur={() => { if (!name) setAdding(false); }}
+          title={taken ? 'A scene with this key exists' : 'Must match the key of the game\x27s Phaser scene'}
+          className={`w-28 bg-gray-900 border rounded px-2 py-1 text-xs text-white focus:outline-none ${name && !valid ? 'border-red-600' : 'border-gray-700 focus:border-blue-500'}`} />
+      ) : (
+        <select value={current} onChange={e => onOpen(e.target.value)} title="Scene"
+          className="max-w-40 px-2 py-1.5 rounded text-xs bg-gray-800 border border-gray-700 text-gray-300 hover:border-gray-600 focus:border-blue-500 outline-none">
+          {keys.map(s => <option key={s.key} value={s.key}>{s.key}{s.hasFile ? '' : ' (no layout yet)'}</option>)}
+        </select>
+      )}
+      <button onClick={() => setAdding(true)} title="New scene"
+        className="px-2 py-1.5 rounded text-xs text-gray-400 hover:bg-gray-700 hover:text-white border border-gray-700">+</button>
     </div>
   );
 }

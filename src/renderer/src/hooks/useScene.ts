@@ -57,6 +57,10 @@ export function useScene({
   const [toolMode, setToolMode] = useState<ToolMode>('select');
   const [saving, setSaving] = useState(false);
   const [lockedIds, setLockedIds] = useState<string[]>([]);
+  /** The scene being edited (its key is the file name and the game's Phaser scene key) and the scenes the project offers. */
+  const [sceneKey, setSceneKey] = useState(DEFAULT_SCENE);
+  const keyRef = useRef(DEFAULT_SCENE);
+  const [scenes, setScenes] = useState<SceneEntry[]>([]);
 
   model.bindView(send, projectFolder);
   const { objects, rev, savedRev, problems, blocked, sceneStatus } = useSceneModel(useShallow(s => ({
@@ -212,7 +216,7 @@ export function useScene({
     const fail = (error?: string) => { appendLog(`\n[Save failed: ${error ?? 'Unknown error'}]\n`); showConsole(); };
     const cfg = await ensureConfigPersisted(folder, devScript);
     if (!cfg.ok) return fail(cfg.error);
-    const r = await api.saveScene(folder, DEFAULT_SCENE, text);
+    const r = await api.saveScene(folder, keyRef.current, text);
     if (r.ok) model.markSaved(atRev); else fail(r.error);
   };
 
@@ -231,14 +235,14 @@ export function useScene({
   };
 
   /** Reads and validates the scene file; the report ends up in the model's problems. */
-  const loadScene = async (folder: string) => {
-    const r = await api.loadScene(folder, DEFAULT_SCENE);
+  const loadScene = async (folder: string, key = keyRef.current) => {
+    const r = await api.loadScene(folder, key);
     if (!r.ok) {
-      return model.blockDoc(DEFAULT_SCENE, [{ level: 'error', message: `${r.error ?? 'Cannot read the scene file.'} The file was left untouched and saving is disabled.` }]);
+      return model.blockDoc(key, [{ level: 'error', message: `${r.error ?? 'Cannot read the scene file.'} The file was left untouched and saving is disabled.` }]);
     }
-    if (!r.found) return model.resetDoc(DEFAULT_SCENE);
-    const { doc, problems: found, fatal } = parseScene(r.data, DEFAULT_SCENE, engine);
-    if (fatal) return model.blockDoc(DEFAULT_SCENE, [...found, { level: 'error', message: 'The file was left untouched and saving is disabled.' }]);
+    if (!r.found) return model.resetDoc(key);
+    const { doc, problems: found, fatal } = parseScene(r.data, key, engine);
+    if (fatal) return model.blockDoc(key, [...found, { level: 'error', message: 'The file was left untouched and saving is disabled.' }]);
     await model.loadDoc(doc, found);
   };
 
@@ -246,7 +250,7 @@ export function useScene({
   const reloadFromDisk = useLatest(async () => {
     if (!projectFolder || readOnly) return;
     const { rev: r, savedRev: s } = useSceneModel.getState();
-    if (r !== s && !window.confirm(`${DEFAULT_SCENE}.scene.json changed on disk, but the open scene has unsaved edits. Reload from disk and discard them?`)) {
+    if (r !== s && !window.confirm(`${keyRef.current}.scene.json changed on disk, but the open scene has unsaved edits. Reload from disk and discard them?`)) {
       return appendLog('\n[Scene file changed on disk; kept your unsaved edits. Saving will overwrite the external change.]\n');
     }
     gestureRef.current = null;
@@ -257,23 +261,63 @@ export function useScene({
 
   useEffect(() => {
     if (!projectFolder) return;
-    api.watchScene(projectFolder, DEFAULT_SCENE);
+    api.watchScene(projectFolder, sceneKey);
     return api.onSceneChanged(() => { void reloadFromDisk.current(); });
-  }, [projectFolder, reloadFromDisk]);
+  }, [projectFolder, sceneKey, reloadFromDisk]);
 
-  /** Clears the scene for a newly opened project and reads its scene file; the viewport exists only once a scene does. */
-  const beginProject = (folder: string) => {
+  const refreshScenes = async (folder: string) => {
+    const list = await api.listScenes(folder);
+    setScenes(list);
+    return list;
+  };
+
+  const selectKey = (key: string) => { keyRef.current = key; setSceneKey(key); };
+
+  /** Clears the scene for a newly opened project, lists its scenes and opens the first; the viewport exists only once a scene does. */
+  const beginProject = async (folder: string) => {
+    selectKey(DEFAULT_SCENE);
     model.resetDoc(DEFAULT_SCENE);
     model.setLoading();
     useEditorStore.getState().setSelectedObject(null);
     history.clear();
     gestureRef.current = null;
-    void loadScene(folder);
+    const list = await refreshScenes(folder);
+    selectKey((list.find(e => e.hasFile) ?? list[0])?.key ?? DEFAULT_SCENE);
+    await loadScene(folder);
+  };
+
+  /** Asks what to do with unsaved edits before they are replaced; false means the user cancelled. */
+  const settleUnsaved = async () => {
+    if (readOnly || useSceneModel.getState().rev === useSceneModel.getState().savedRev) return true;
+    const choice = await api.confirmUnsaved(`${keyRef.current} has unsaved changes. Save before switching scenes?`);
+    if (choice === 'cancel') return false;
+    if (choice === 'save') {
+      await handleSave();
+      if (useSceneModel.getState().rev !== useSceneModel.getState().savedRev) return false;
+    }
+    return true;
+  };
+
+  const resetEditing = () => {
+    gestureRef.current = null;
+    history.clear();
+    useEditorStore.getState().setSelectedObject(null);
+  };
+
+  /** Switches to another of the project's scenes. */
+  const openScene = async (key: string) => {
+    if (!projectFolder || key === keyRef.current || !(await settleUnsaved())) return;
+    resetEditing();
+    selectKey(key);
+    model.setLoading();
+    await loadScene(projectFolder, key);
   };
 
   /** Clears all scene state (model, history, selection, problems) and stops the file watcher. */
   const endProject = () => {
     void api.watchScene('', DEFAULT_SCENE);
+    setScenes([]);
+    selectKey(DEFAULT_SCENE);
     gestureRef.current = null;
     history.clear();
     useEditorStore.getState().setSelectedObject(null);
@@ -281,12 +325,15 @@ export function useScene({
     model.resetDoc(DEFAULT_SCENE);
   };
 
-  /** Creates the first scene (an empty file on disk) and opens it in the designer. */
-  const createScene = async () => {
-    if (!projectFolder) return;
-    model.resetDoc(DEFAULT_SCENE, 'open');
+  /** Creates a scene (an empty file on disk) and opens it in the designer; without a key, the one already selected but still without a file. */
+  const createScene = async (key = keyRef.current) => {
+    if (!projectFolder || !(await settleUnsaved())) return;
+    resetEditing();
+    selectKey(key);
+    model.resetDoc(key, 'open');
     const { doc, rev: atRev } = useSceneModel.getState();
     await saveSceneFiles(projectFolder, formatScene(doc, engine), atRev);
+    await refreshScenes(projectFolder);
   };
 
   /** Returns true when the key was an editor shortcut. */
@@ -364,7 +411,7 @@ export function useScene({
   }, [iframeRef, onMessage, handleShortcut]);
 
   return {
-    objectItems, toolMode, saveStatus, saveBlocked: blocked, sceneStatus, createScene, problems, addPrimitive, dropAsset,
+    objectItems, scenes, sceneKey, openScene, toolMode, saveStatus, saveBlocked: blocked, sceneStatus, createScene, problems, addPrimitive, dropAsset,
     setTool, toggleSnap, undo, redo, updateField, commitEdit, selectObject, deleteObject, duplicateObject,
     renameObject, reorderObject, updateMeta, toggleVisible, toggleLocked, handleSave, beginProject, endProject,
   };
