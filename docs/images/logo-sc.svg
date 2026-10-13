@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Scenecaster SC">
+  <title>Scenecaster</title>
+  <defs>
+    <radialGradient id="bg" cx="0.5" cy="0.38" r="0.8">
+      <stop offset="0" stop-color="#2a1a5e"/>
+      <stop offset="0.6" stop-color="#120c2e"/>
+      <stop offset="1" stop-color="#07061a"/>
+    </radialGradient>
+    <linearGradient id="s" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#c58bff"/>
+      <stop offset="1" stop-color="#7c5cff"/>
+    </linearGradient>
+    <linearGradient id="c" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7c5cff"/>
+      <stop offset="1" stop-color="#2ea8ff"/>
+    </linearGradient>
+    <linearGradient id="frame" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#c58bff"/>
+      <stop offset="1" stop-color="#4cc3ff"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="8"/></filter>
+    <pattern id="grid" width="16" height="16" patternUnits="userSpaceOnUse">
+      <path d="M16 0H0V16" fill="none" stroke="#8b7bff" stroke-opacity=".12" stroke-width="1"/>
+    </pattern>
+    <clipPath id="tile"><rect width="256" height="256" rx="56"/></clipPath>
+  </defs>
+  <g clip-path="url(#tile)">
+    <rect width="256" height="256" fill="url(#bg)"/>
+    <rect width="256" height="256" fill="url(#grid)"/>
+  </g>
+  <rect x="1.5" y="1.5" width="253" height="253" rx="54.5" fill="none" stroke="url(#frame)" stroke-opacity=".35" stroke-width="3"/>
+  <!-- glow layer -->
+  <g fill="none" stroke-width="24" stroke-linecap="round" opacity=".55" filter="url(#glow)">
+    <path d="M97 94 A24 24 0 1 0 76 127 A24 24 0 1 1 55 160" stroke="url(#s)"/>
+    <path d="M202 100 A44 44 0 1 0 202 156" stroke="url(#c)"/>
+  </g>
+  <!-- S and C -->
+  <g fill="none" stroke-width="20" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M97 94 A24 24 0 1 0 76 127 A24 24 0 1 1 55 160" stroke="url(#s)"/>
+    <path d="M202 100 A44 44 0 1 0 202 156" stroke="url(#c)"/>
+  </g>
+  <!-- selection handles on the C: the "scene" cue -->
+  <g fill="#fff">
+    <rect x="197.5" y="95.5" width="9" height="9" rx="2"/>
+    <rect x="197.5" y="151.5" width="9" height="9" rx="2"/>
+  </g>
+</svg>
