@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
+import { useShallow } from 'zustand/react/shallow';
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
 import type React from 'react';
 import { useEditorStore, ObjectProps } from './store';
 import HierarchyPanel, { HierarchyItem } from './components/HierarchyPanel';
@@ -60,7 +61,6 @@ export default function App() {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const consoleEndRef = useRef<HTMLDivElement>(null);
-  const store = useEditorStore();
 
   const [hierarchy, setHierarchy] = useState<HierarchyItem[]>([]);
   const [toolMode, setToolMode] = useState<ToolMode>('select');
@@ -102,7 +102,18 @@ export default function App() {
     moved: boolean;
   } | null>(null);
 
-  const send = useCallback((msg: object) => iframeRef.current?.contentWindow?.postMessage(msg, '*'), []);
+  // Target origin for outgoing posts: the dev game's origin when live, else the editor's own origin
+  // (phaser.html is same-origin). Under file:// the origin is opaque ('null'), so '*' is unavoidable there.
+  const targetOrigin = useMemo(() => {
+    try {
+      const o = new URL(devUrl ?? window.location.href).origin;
+      return o === 'null' ? '*' : o;
+    } catch { return '*'; }
+  }, [devUrl]);
+  const send = useCallback(
+    (msg: object) => iframeRef.current?.contentWindow?.postMessage(msg, targetOrigin),
+    [targetOrigin],
+  );
   const sendBridge = useCallback((msg: object) => send({ forge: true, ...msg }), [send]);
   const requestBridgeObjects = useCallback((sceneKey: string) => sendBridge({ type: 'FORGE_GET_OBJECTS', sceneKey }), [sendBridge]);
   const appendLog = useCallback((text: string) => setDevLogs(prev => prev + text), []);
@@ -158,8 +169,8 @@ export default function App() {
   };
 
   const toggleSnap = () => {
-    send({ type: 'SET_SNAP', enabled: !store.snapEnabled });
-    store.toggleSnap();
+    send({ type: 'SET_SNAP', enabled: !useEditorStore.getState().snapEnabled });
+    useEditorStore.getState().toggleSnap();
   };
 
   const applyHistory = (entry: { id: string; props: ObjectProps } | null) => {
@@ -168,16 +179,16 @@ export default function App() {
     patchItem(entry.id, { visible: entry.props.visible });
     markDirty();
   };
-  const undo = () => applyHistory(store.undo());
-  const redo = () => applyHistory(store.redo());
+  const undo = () => applyHistory(useEditorStore.getState().undo());
+  const redo = () => applyHistory(useEditorStore.getState().redo());
 
   const updateField = (props: Partial<ObjectProps>, commit = false) => {
-    const id = store.selectedId;
+    const id = useEditorStore.getState().selectedId;
     if (!id) return;
-    store.updateProperties(props);
+    useEditorStore.getState().updateProperties(props);
     send({ type: 'SET_PROPERTIES', id, ...props });
     if (props.visible !== undefined) patchItem(id, { visible: props.visible });
-    if (commit) store.commit();
+    if (commit) useEditorStore.getState().commit();
     markDirty();
   };
 
@@ -202,7 +213,7 @@ export default function App() {
     const item = hierarchy.find(i => i.id === id);
     if (!item) return;
     const visible = !item.visible;
-    if (id === store.selectedId) return updateField({ visible }, true);
+    if (id === useEditorStore.getState().selectedId) return updateField({ visible }, true);
     send({ type: 'SET_PROPERTIES', id, visible });
     patchItem(id, { visible });
     markDirty();
@@ -288,7 +299,7 @@ export default function App() {
     setProjectFolder(folder);
     setCanvasSize({ w: config.canvasWidth, h: config.canvasHeight });
     setHierarchy([]);
-    store.setSelectedObject(null);
+    useEditorStore.getState().setSelectedObject(null);
     useEditorStore.setState({ past: [], future: [] });
     pendingLoadFolderRef.current = folder;
     // Otherwise the iframe reloads (new size or leaving live mode) and its SCENE_READY triggers the load.
@@ -456,7 +467,7 @@ export default function App() {
     const tool = TOOLS.find(t => t.key === key);
     if (tool) setTool(tool.mode);
     else if (key === 'f') send({ type: 'RESET_CAMERA' });
-    else if (key === 'delete' && store.selectedId) deleteObject(store.selectedId);
+    else if (key === 'delete' && useEditorStore.getState().selectedId) deleteObject(useEditorStore.getState().selectedId!);
     else if (key === 'escape') send({ type: 'DESELECT_ALL' });
     else return false;
     return true;
@@ -472,7 +483,7 @@ export default function App() {
       case 'SCENE_READY': {
         setHierarchy([]);
         send({ type: 'SET_TOOL_MODE', mode: toolMode });
-        send({ type: 'SET_SNAP', enabled: store.snapEnabled });
+        send({ type: 'SET_SNAP', enabled: useEditorStore.getState().snapEnabled });
         // Also reload after the iframe is swapped back from a running game, which resets the scene.
         const folder = pendingLoadFolderRef.current ?? projectFolder;
         pendingLoadFolderRef.current = null;
@@ -480,7 +491,7 @@ export default function App() {
         break;
       }
       case 'OBJECT_SELECTED':
-        store.setSelectedObject(m.id, {
+        useEditorStore.getState().setSelectedObject(m.id, {
           x: round2(m.x), y: round2(m.y), rotation: round2(m.rotation),
           scaleX: round2(m.scaleX), scaleY: round2(m.scaleY), alpha: round2(m.alpha),
           tint: m.tint, visible: m.visible, depth: m.depth,
@@ -490,19 +501,19 @@ export default function App() {
         }, m.texW, m.texH);
         break;
       case 'OBJECT_DESELECTED':
-        store.setSelectedObject(null);
+        useEditorStore.getState().setSelectedObject(null);
         break;
       case 'OBJECT_TRANSFORMED': {
-        if (m.id !== store.selectedId) break;
+        if (m.id !== useEditorStore.getState().selectedId) break;
         const props: Partial<ObjectProps> = {};
         for (const k of ['x', 'y', 'rotation', 'scaleX', 'scaleY'] as const) {
           if (m[k] !== undefined) props[k] = round2(m[k]);
         }
-        store.updateProperties(props);
+        useEditorStore.getState().updateProperties(props);
         break;
       }
       case 'PUSH_HISTORY':
-        store.commit();
+        useEditorStore.getState().commit();
         markDirty();
         break;
       case 'OBJECT_ADDED':
@@ -519,7 +530,11 @@ export default function App() {
   });
 
   useEffect(() => {
-    const handleMessage = (ev: MessageEvent) => onMessage.current(ev.data);
+    const handleMessage = (ev: MessageEvent) => {
+      // The viewport iframe (editor Phaser view or the dev game) is the only legitimate sender.
+      if (ev.source !== iframeRef.current?.contentWindow) return;
+      onMessage.current(ev.data);
+    };
     const handleKey = (ev: KeyboardEvent) => {
       if (!isTyping(ev.target) && handleShortcut.current(ev)) ev.preventDefault();
     };
@@ -547,8 +562,16 @@ export default function App() {
   };
 
   const iframeSrc = devUrl ?? `./phaser.html?w=${canvasSize.w}&h=${canvasSize.h}`;
-  const { selectedId, x, y, rotation, scaleX, scaleY, alpha, tint, visible, depth, originX, originY, flipX, flipY, scrollFactorX, scrollFactorY, texW, texH, snapEnabled, past, future } = store;
-  const commit = store.commit;
+  const { selectedId, x, y, rotation, scaleX, scaleY, alpha, tint, visible, depth, originX, originY, flipX, flipY, scrollFactorX, scrollFactorY, texW, texH, snapEnabled } = useEditorStore(useShallow(s => ({
+    selectedId: s.selectedId, x: s.x, y: s.y, rotation: s.rotation, scaleX: s.scaleX, scaleY: s.scaleY,
+    alpha: s.alpha, tint: s.tint, visible: s.visible, depth: s.depth, originX: s.originX, originY: s.originY,
+    flipX: s.flipX, flipY: s.flipY, scrollFactorX: s.scrollFactorX, scrollFactorY: s.scrollFactorY,
+    texW: s.texW, texH: s.texH, snapEnabled: s.snapEnabled,
+  })));
+  const pastCount = useEditorStore(s => s.past.length);
+  const canUndo = pastCount > 0;
+  const canRedo = useEditorStore(s => s.future.length > 0);
+  const commit = useEditorStore.getState().commit;
 
   return (
     <div className="flex h-screen w-screen flex-col bg-gray-900 text-white select-none overflow-hidden">
@@ -593,12 +616,12 @@ export default function App() {
         </button>
 
         <div className="flex items-center gap-0.5 ml-1">
-          <ToolBtn icon="↩" label="Undo" disabled={past.length === 0 || !!devUrl} onClick={undo} />
-          <ToolBtn icon="↪" label="Redo" disabled={future.length === 0 || !!devUrl} onClick={redo} />
+          <ToolBtn icon="↩" label="Undo" disabled={!canUndo || !!devUrl} onClick={undo} />
+          <ToolBtn icon="↪" label="Redo" disabled={!canRedo || !!devUrl} onClick={redo} />
         </div>
 
         <div className="flex-1" />
-        {past.length > 0 && <span className="text-xs text-gray-700 hidden xl:block mr-2">{past.length} action{past.length !== 1 ? 's' : ''}</span>}
+        {pastCount > 0 && <span className="text-xs text-gray-700 hidden xl:block mr-2">{pastCount} action{pastCount !== 1 ? 's' : ''}</span>}
         {projectFolder && !devUrl && (
           <span className={`text-[10px] hidden xl:block ${saveStatus === 'unsaved' ? 'text-yellow-600' : saveStatus === 'saving' ? 'text-gray-500' : 'text-gray-700'}`}>
             {saveStatus === 'saving' ? 'saving…' : saveStatus}
