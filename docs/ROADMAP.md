@@ -50,7 +50,8 @@ The roadmap is checked against the games in `E:\Gen-AI-Games\phaser-prototypes` 
 | Camera persistence, grid, align/distribute, recent projects | **Cheap ones** | Phases 1 and 4 |
 | Playwright E2E with an ephemeral project | **Yes** | Phase 7 |
 | Signals, GML helpers, `TulioBehaviour` lifecycle, own game loop | **No** | Engine features |
-| Monaco, dock layout, Konva designer, hosted build, multi-engine export, monetization | **No** | Out of scope |
+| Dock layout (dockview, resizable/persisted panels) | **Yes, revised** | Phase 1; panel sizing is broken today (see below) |
+| Monaco, Konva designer, hosted build, multi-engine export, monetization | **No** | Out of scope |
 
 ## Phases
 
@@ -86,6 +87,7 @@ Effort: **S** (under a day) · **M** (a few days) · **L** (a week or more).
 - [ ] **S** *Optional:* scene flow view (Boot → Title → Game, UI launched over Game) drawn from the registry
 - [x] **M** **Disable live mode** (decided: not used, and the browser reloads on file changes anyway). Switch it off behind one flag, default off, rather than deleting it: hide the embedded game iframe, edit overlay, Install Bridge UI and live inspector, and keep `src/bridge/` and the live-mode code in the repo, unused. Keep **Run dev server** with its console and an **Open in browser** link (see Phase 6). Move the live-only code out of the main `App.tsx` path so disabling it also removes its state from the design-mode code; this makes it easy to re-enable later. Update the README, which still advertises live mode.
 - [x] **M** Clean up `App.tsx` (architecture item 4), now design mode only: hooks for the project, the scene and the dev server instead of one 989-line component
+- [ ] **M** **Panel layout via dockview** (borrow the approach from `SantasLair/tulio-editor` `src/core/Layout.ts`; it uses `dockview-core`, MIT-licensed, we use the `dockview` React package): resizable, collapsible, drag-to-rearrange panels (hierarchy, assets, inspector, console, viewport), layout persisted per user with a "Reset layout" command. Fixes the current panel sizing problems. Check tulio-editor's licence before copying any code; the library itself is the part to reuse.
 - [ ] **S** Multi-select, copy/paste, arrow-key nudge, per-scene camera persistence, recent projects
 
 ### Phase 2 — Asset pipeline (your stated use case)
