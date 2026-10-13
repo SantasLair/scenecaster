@@ -21,6 +21,8 @@ interface ProjectConfig {
   canvasWidth: number;
   canvasHeight: number;
   devScript?: string;
+  /** Read from the pre-Phase-1 .phaser-forge.json; not yet persisted in scenecaster/project.json. */
+  legacy?: boolean;
 }
 
 interface SavedScene {
@@ -36,10 +38,11 @@ interface ElectronAPI {
   readAssets: (folder: string) => Promise<AssetEntry[]>;
   fileToDataUrl: (path: string) => Promise<string | null>;
   readProjectConfig: (folder: string) => Promise<ProjectConfig | null>;
-  writeProjectConfig: (folder: string, cfg: ProjectConfig) => Promise<boolean>;
+  writeProjectConfig: (folder: string, cfg: ProjectConfig) => Promise<IpcResult>;
   readProjectScripts: (folder: string) => Promise<string[]>;
-  saveScene: (folder: string, objects: object[]) => Promise<boolean>;
-  loadScene: (folder: string) => Promise<SavedScene | null>;
+  saveScene: (folder: string, name: string, objects: object[]) => Promise<IpcResult>;
+  /** `legacy`: loaded from the pre-Phase-1 forge-scene.json, which stays on disk untouched. */
+  loadScene: (folder: string, name: string) => Promise<{ data: SavedScene; legacy: boolean } | null>;
   startDevServer: (folder: string, script?: string) => Promise<IpcResult & { url?: string }>;
   stopDevServer: () => Promise<IpcResult>;
   onDevServerOutput: (cb: (text: string) => void) => void;
