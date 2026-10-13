@@ -68,19 +68,19 @@ Effort: **S** (under a day) · **M** (a few days) · **L** (a week or more).
 - [ ] **M** Scene model in the renderer; Phaser is a view (architecture item 5)
 - [ ] **M** Command-based history; add/delete/duplicate/rename become undoable
 - [x] **S** Move scene storage to `scenecaster/scenes/<name>.scene.json`
-- [ ] **S** **Naming:** the folder name is one constant in the editor. `MIGRATE.md`, `check.mjs`, the README and the `CLAUDE.md` pointer are generated from it, so a future rename is a one-line change. The folder is a normal (not hidden) directory, because many search tools skip dot-folders.
+- [ ] **S** **Naming:** the folder name is one constant in the editor. *(Partial: constant is `src/shared/layout.ts`; generated docs not started.)* `MIGRATE.md`, `check.mjs`, the README and the `CLAUDE.md` pointer are generated from it, so a future rename is a one-line change. The folder is a normal (not hidden) directory, because many search tools skip dot-folders.
 - [ ] **S** AI-friendly format: relative asset paths, `version`, unique readable `name` per object, UUID `id` kept, `parentId`, stable key order, one object per few lines for clean diffs
 - [ ] **S** Scene `key` field that must match the Phaser scene key, plus an `overlay` flag (the scene draws over another, so the editor shows a neutral backdrop and the canvas size comes from the game)
 - [ ] **S** Project root discovery: Open Project finds the nearest `package.json` (e.g. `dungeon-strategy/game`) or lets you pick it; remembers it
 - [x] **S** Write nothing on open. Today the canvas-size prompt writes `.phaser-forge.json` immediately; defer that until a setting changes or something is saved.
-- [ ] **M** **`scenecaster/project.json`** (the project's metadata, read by both the editor and, once adopted, the game):
+- [ ] **M** **`scenecaster/project.json`** *(Partial: file exists with canvas size and dev script only.)* (the project's metadata, read by both the editor and, once adopted, the game):
   - game settings: canvas size, scale mode, physics, background colour, Phaser version
   - scene registry: key, kind (`visual` / `logic` / `overlay`), layout file if any, boot order
   - scene flow: which scene starts or launches which
   - assets folder and dev script (replaces most of `.phaser-forge.json`)
 - [ ] **M** **Project overview panel:** shows `project.json`; editing a setting writes it back. Before a project is adopted it shows detected values instead (scan of `new Phaser.Game({...})`, `super('key')`, `scene: [...]`, `scene.start/launch('key')`), marked "detected, not saved".
 - [ ] **S** **Watch scene files and reload on external change** (AI or git). If the scene is dirty, prompt instead of overwriting.
-- [ ] **S** Dirty tracking; save failure never clears dirty; atomic write (temp file + rename); `.bak` of last good file. Replaces today's silent auto-save on Run.
+- [ ] **S** Dirty tracking; save failure never clears dirty; atomic write (temp file + rename); `.bak` of last good file. *(Partial: atomic write, `.bak` and save-failure-keeps-dirty done; still to do: stop the silent auto-save on Run.)* Replaces today's silent auto-save on Run.
 - [ ] **S** Validate on load: missing assets, duplicate names/ids, unknown kinds. Report in the UI.
 - [ ] **M** **Scene list** = scene registry (or, before adoption, the scanned scenes) joined with `scenecaster/scenes/*.scene.json`. Each scene shows a state: *layout + code*, *code only* (greyed, no canvas; Boot, Preload, Audio...), or *layout only* (warning: no scene with that key). "Create layout" on a code-only scene; rename/delete apply to layout files only and warn if a code scene still uses the key. One layout per scene key.
 - [ ] **S** *Optional:* scene flow view (Boot → Title → Game, UI launched over Game) drawn from the registry
