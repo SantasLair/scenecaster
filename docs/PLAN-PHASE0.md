@@ -1,6 +1,6 @@
 # Implementation Plan — Phase 0 (Foundation)
 
-Source: [ROADMAP-LITE.md](ROADMAP-LITE.md) Phase 0, [ARCHITECTURE-PLAN.md](ARCHITECTURE-PLAN.md) items 1, 2, 3, 6, 10a.
+Source: [ROADMAP.md](ROADMAP.md) Phase 0, [ARCHITECTURE-PLAN.md](ARCHITECTURE-PLAN.md) items 1, 2, 3, 6, 10a.
 Why first: Phase 0 enforces principle 5 ("write only under `scenecaster/` and the assets folder") and fixes a clean install. Everything in Phases 1+ builds on the path guard and the typed protocol.
 
 ## Work streams
