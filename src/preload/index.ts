@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Scene
   saveScene: (folder: string, name: string, text: string) => ipcRenderer.invoke('scene:save', folder, name, text),
+  confirmUnsaved: (message: string) => ipcRenderer.invoke('dialog:unsaved', message),
+  /** An empty folder stops the watcher. */
   watchScene: (folder: string, name: string) => ipcRenderer.invoke('scene:watch', folder, name),
   /** Fires when the scene file was changed by something other than this editor. Returns an unsubscribe function. */
   onSceneChanged: (cb: () => void) => {

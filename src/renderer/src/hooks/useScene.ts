@@ -246,6 +246,16 @@ export function useScene({
     void loadScene(folder);
   };
 
+  /** Clears all scene state (model, history, selection, problems) and stops the file watcher. */
+  const endProject = () => {
+    void api.watchScene('', DEFAULT_SCENE);
+    gestureRef.current = null;
+    history.clear();
+    useEditorStore.getState().setSelectedObject(null);
+    setLockedIds([]);
+    model.resetDoc(DEFAULT_SCENE);
+  };
+
   /** Creates the first scene (an empty file on disk) and opens it in the designer. */
   const createScene = async () => {
     if (!projectFolder) return;
@@ -331,6 +341,6 @@ export function useScene({
   return {
     hierarchy, toolMode, saveStatus, saveBlocked: blocked, sceneStatus, createScene, problems, addPrimitive, dropAsset,
     setTool, toggleSnap, undo, redo, updateField, commitEdit, selectObject, deleteObject, duplicateObject,
-    renameObject, toggleVisible, toggleLocked, handleSave, beginProject,
+    renameObject, toggleVisible, toggleLocked, handleSave, beginProject, endProject,
   };
 }

@@ -16,6 +16,13 @@ export function useProject() {
     setCanvasSize({ w: config.canvasWidth, h: config.canvasHeight });
   };
 
+  const close = () => {
+    configPersistedRef.current = false;
+    setPendingSetupFolder(null);
+    setProjectFolder(null);
+    setCanvasSize({ w: 1280, h: 720 });
+  };
+
   /** Folder picker; `onOpen` runs for a folder that already has a config, otherwise the setup dialog asks for the size. */
   const choose = async (onOpen: (folder: string, config: ProjectConfig, persisted: boolean) => void) => {
     const folder = await api.openFolder();
@@ -50,6 +57,6 @@ export function useProject() {
 
   return {
     projectFolder, canvasSize, pendingSetupFolder,
-    open, choose, confirmSetup, cancelSetup, ensureConfigPersisted, persistDevScript,
+    open, close, choose, confirmSetup, cancelSetup, ensureConfigPersisted, persistDevScript,
   };
 }
