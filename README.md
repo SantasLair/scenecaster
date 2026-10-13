@@ -35,8 +35,8 @@ Placing things in a Phaser game by typing coordinates and reloading is slow. Sce
 - **Hierarchy panel** — click to select, right-click for rename/duplicate/delete, per-object lock and visibility
 - **Undo/Redo** — Ctrl+Z / Ctrl+Y, up to 100 steps
 - **Snap to grid** — toggleable 32px snap
-- **Save / load** — layout stored in `forge-scene.json` in your project (Ctrl+S)
-- **Per-project config** — canvas size and dev script saved to `.phaser-forge.json`
+- **Save / load** — layout stored in `scenecaster/scenes/main.scene.json` in your project (Ctrl+S): readable, one object per line, validated on load
+- **Per-project config** — canvas size and dev script saved to `scenecaster/project.json`
 - **Run dev server** — start your game's dev script from the editor, watch its console, and open the game in your browser (live mode, which embedded the running game, is switched off)
 
 ---
@@ -84,7 +84,7 @@ npm run dev
 
 1. Click **📁 Open Project** in the toolbar
 2. Select your Phaser 4 project folder
-3. Enter your game's canvas size (e.g. `1280 × 720`) — saved to `.phaser-forge.json` for next time
+3. Enter your game's canvas size (e.g. `1280 × 720`) — saved to `scenecaster/project.json` for next time
 4. Drag assets from the **Assets** panel onto the viewport
 
 ---
