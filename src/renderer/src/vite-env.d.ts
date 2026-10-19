@@ -17,6 +17,9 @@ interface AssetFolder {
 
 type AssetEntry = AssetFile | AssetFolder;
 
+/** One row of the FileSystem tree: `path` is absolute. */
+interface FsEntry { name: string; type: 'folder' | 'file'; path: string; ext: string }
+
 interface ProjectConfig {
   canvasWidth: number;
   canvasHeight: number;
@@ -35,6 +38,9 @@ interface ElectronAPI {
   openFolder: () => Promise<string | null>;
   readAssets: (folder: string) => Promise<AssetEntry[]>;
   fileToDataUrl: (path: string) => Promise<string | null>;
+  listDir: (dir: string) => Promise<FsEntry[]>;
+  findFiles: (dir: string, query: string) => Promise<FsEntry[]>;
+  showItem: (path: string) => Promise<void>;
   readProjectConfig: (folder: string) => Promise<ProjectConfig | null>;
   writeProjectConfig: (folder: string, cfg: ProjectConfig) => Promise<IpcResult>;
   readProjectScripts: (folder: string) => Promise<string[]>;

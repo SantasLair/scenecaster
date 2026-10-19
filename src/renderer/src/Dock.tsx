@@ -6,6 +6,7 @@ import 'dockview-react/dist/styles/dockview.css';
 /** Everything the panels need from App, passed by context (dockview renders panels as portals inside our tree). */
 export interface DockCtx {
   objects: React.ReactNode;
+  filesystem: React.ReactNode;
   assets: React.ReactNode;
   inspector: React.ReactNode;
   console: React.ReactNode;
@@ -32,6 +33,7 @@ function ViewportSlot(_: IDockviewPanelProps) {
 
 const components = {
   objects: slot('objects'),
+  filesystem: slot('filesystem'),
   assets: slot('assets'),
   inspector: slot('inspector'),
   console: slot('console'),
@@ -44,6 +46,8 @@ export function buildDefaultLayout(api: DockviewApi) {
   const vp = api.addPanel({ id: 'viewport', component: 'viewport', title: 'Viewport' });
   api.addPanel({ id: 'objects', component: 'objects', title: 'Objects',
     position: { referencePanel: vp, direction: 'left' }, initialWidth: 220 });
+  api.addPanel({ id: 'filesystem', component: 'filesystem', title: 'FileSystem',
+    position: { referencePanel: 'objects', direction: 'below' }, initialHeight: 260 });
   api.addPanel({ id: 'inspector', component: 'inspector', title: 'Inspector',
     position: { referencePanel: vp, direction: 'right' }, initialWidth: 270 });
   const assets = api.addPanel({ id: 'assets', component: 'assets', title: 'Assets',

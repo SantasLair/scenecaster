@@ -372,6 +372,63 @@ app.whenReady().then(() => {
     return scanAssets(root, root);
   });
 
+  /** Names the FileSystem panel never shows: VCS and tool folders, build output, dependency folders and dot-files. */
+  const HIDDEN_DIRS = new Set(['node_modules', 'dist', 'out', 'release', 'build', 'coverage']);
+  const hidden = (name: string, isDir: boolean) => name.startsWith('.') || (isDir && HIDDEN_DIRS.has(name));
+  const MAX_LIST = 3000;
+
+  /** One level of a folder, folders first, for the lazy FileSystem tree. Symlinks that leave the project are skipped. */
+  ipcMain.handle('fs:listDir', (_e, rawDir: unknown) => {
+    const dir = guardFolder(rawDir);
+    if (!dir) return [];
+    let entries: fs.Dirent[];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return []; }
+    const out: { name: string; type: 'folder' | 'file'; path: string; ext: string }[] = [];
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      let isDir = entry.isDirectory();
+      if (entry.isSymbolicLink()) {
+        const real = guardPath(full);
+        if (!real) continue;
+        try { isDir = fs.statSync(real).isDirectory(); } catch { continue; }
+      }
+      if (hidden(entry.name, isDir)) continue;
+      out.push({ name: entry.name, type: isDir ? 'folder' : 'file', path: full, ext: isDir ? '' : path.extname(entry.name).toLowerCase() });
+      if (out.length >= MAX_LIST) break;
+    }
+    const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true });
+    return [...out.filter(e => e.type === 'folder').sort(byName), ...out.filter(e => e.type === 'file').sort(byName)];
+  });
+
+  /** Files and folders whose name contains `query`, searched through the whole project (bounded). */
+  ipcMain.handle('fs:findFiles', (_e, rawDir: unknown, rawQuery: unknown) => {
+    const root = guardFolder(rawDir);
+    const query = typeof rawQuery === 'string' ? rawQuery.trim().toLowerCase() : '';
+    if (!root || !query) return [];
+    const found: { name: string; type: 'folder' | 'file'; path: string; ext: string }[] = [];
+    let visited = 0;
+    const walk = (dir: string, depth: number) => {
+      if (depth > 10 || found.length >= 500 || visited > 20000) return;
+      let entries: fs.Dirent[];
+      try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+      for (const entry of entries) {
+        visited++;
+        const isDir = entry.isDirectory();
+        if (entry.isSymbolicLink() || hidden(entry.name, isDir)) continue;
+        const full = path.join(dir, entry.name);
+        if (entry.name.toLowerCase().includes(query)) found.push({ name: entry.name, type: isDir ? 'folder' : 'file', path: full, ext: isDir ? '' : path.extname(entry.name).toLowerCase() });
+        if (isDir) walk(full, depth + 1);
+      }
+    };
+    walk(root, 0);
+    return found;
+  });
+
+  ipcMain.handle('shell:showItem', (_e, rawPath: unknown) => {
+    const target = guardPath(rawPath);
+    if (target) shell.showItemInFolder(target);
+  });
+
   ipcMain.handle('fs:fileToDataUrl', (_e, rawPath: unknown) => {
     const fullPath = guardPath(rawPath);
     if (!fullPath || !IMAGE_EXTS.includes(path.extname(fullPath).toLowerCase())) return null;

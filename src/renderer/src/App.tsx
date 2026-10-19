@@ -6,6 +6,7 @@ import { useSceneModel } from './sceneModel';
 import { useHistory } from './history';
 import ObjectsPanel from './components/ObjectsPanel';
 import AssetBrowser from './components/AssetBrowser';
+import FileSystemPanel from './components/FileSystemPanel';
 import Inspector from './components/Inspector';
 import ProblemsPanel from './components/ProblemsPanel';
 import { ToolBtn, SetupDialog, ScenePicker } from './components/Controls';
@@ -149,6 +150,10 @@ export default function App() {
           </div>
         )}
       </div>
+    ),
+    filesystem: (
+      <FileSystemPanel projectFolder={projectFolder} onOpenProject={handleOpenProject}
+        onOpenScene={openScene} onDragAsset={() => setIsDraggingAsset(true)} />
     ),
     assets: (
       <AssetBrowser projectFolder={projectFolder} onOpenProject={handleOpenProject} onDragAsset={() => setIsDraggingAsset(true)} />
