@@ -1,6 +1,6 @@
 # Plan: adopt PHASEFORM and Godot's look and feel
 
-**Written:** 2026-10-19. Status: proposal, not started. Open questions are at the end.
+**Written:** 2026-10-19. Status: **merged into [ROADMAP.md](ROADMAP.md) on 2026-10-19**, which now holds the phases and status. This file keeps the field mapping, rationale and detail. Phase A steps 1 and 2 are partly done (loader dependency; viewport builds objects through it). Open questions are at the end.
 
 Two changes to Scenecaster. PHASEFORM changes the data model, the Godot look changes the UI. Do the format first so the UI is restyled once, on the final panels.
 

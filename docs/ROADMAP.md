@@ -2,8 +2,32 @@
 
 > A scene and asset editor that sits **beside** a hand-written (often AI-written) Phaser 4 project and touches it as little as possible.
 
-**Written:** 2026-10-13. See also [ARCHITECTURE-PLAN.md](ARCHITECTURE-PLAN.md).
-**Tulio sources read:** `SantasLair/tulio-editor` (V1 plan, export proposal, script-system plan, `projectModel/*`, `UndoRedoManager.ts`, `FileWatcherService.ts`) and the sample `Tulio-Bogyo`.
+**Written:** 2026-10-13. **Revised:** 2026-10-19: the PHASEFORM format and the Godot look and feel are merged in (they were a separate proposal, [PLAN-PHASEFORM-GODOT-UI.md](PLAN-PHASEFORM-GODOT-UI.md), which keeps the detail). See also [ARCHITECTURE-PLAN.md](ARCHITECTURE-PLAN.md).
+
+## What changed in this revision
+
+1. **The scene format becomes [PHASEFORM](https://github.com/SantasLair/phaseform)**, an open format for Phaser 4 scenes with a published reference loader (`phaseform-loader` on npm). It replaces the v1 flat, engine-neutral format. This reverses two earlier decisions: *flat only* (PHASEFORM is a tree with `container`) and *engine-neutral* (it targets Phaser 4).
+2. **The UI is restyled to look and feel like Godot's editor**, done in steps that do not depend on the format change.
+3. **Phases are reordered.** The format adoption comes before the asset pipeline and the hand-off work, because both of those now build on PHASEFORM files (`phaseform.project.json`, its asset manifest, `phaseform-cli`).
+4. Items the PHASEFORM toolkit already provides (loader snippet, JSON Schemas, `check.mjs`) are replaced by "use the toolkit".
+
+## Status at a glance (2026-10-19)
+
+| Phase | State |
+|---|---|
+| 0 Foundation | Done |
+| 1 Trustworthy scene file (on the v1 format) | Mostly done; the open items are re-homed below |
+| 1b Quick wins (rename, title bar) | Not started |
+| 2 Adopt PHASEFORM | **Started:** loader is a dependency and builds the viewport objects; the model is still flat v1 |
+| 3 Godot look and feel | Not started; step 1 (theme) can run in parallel with Phase 2 |
+| 4 Asset pipeline | Not started (rebased onto the PHASEFORM manifest) |
+| 5 Hand-off to code, adopting projects | Not started (rebased onto the toolkit) |
+| 6 Phaser object types | Not started (mostly delivered by Phase 2 plus per-type UI) |
+| 7 Prefab-lite | Not started, blocked on a PHASEFORM prefab spec |
+| 8 Dev loop and extras | Not started |
+| 9 Release | Not started |
+
+Two tracks can run side by side: **format** (Phases 2, 4, 5, 6) and **look** (Phase 3). The Phase 3 theme work touches CSS and components only.
 
 ## Use case (the constraint that shapes everything)
 
@@ -11,167 +35,155 @@
 2. **AI-driven code:** an AI agent (Claude Code or similar) writes and changes the game code.
 3. **Asset management:** the human uses the editor to add assets to the project.
 
-The editor and the AI never talk to each other. They share **files**: the scene JSON and the assets folder. So the file formats are the product.
+The editor and the AI never talk to each other. They share **files**: the scene documents, the project file and the assets folder. So the file formats are the product, and PHASEFORM is now the format.
 
 ### Target projects
 
 The roadmap is checked against a set of local Phaser prototype games (bannerwake, ember-keep, forge-editor-test, hexTiles-fantasy, keep-and-conquer, lords-of-kastrallia, mini-world, quick-civ-roguelite, tiny-realms, turnstead, plus Auto-Shooter-Survivor, Kastro-Via, dungeon-strategy). Survey findings (file listing and grep, not a code read):
 
-- Mostly Vite + Phaser 4 (one Phaser 3.90), JS or TS, with `CLAUDE.md` architecture rules in several. Some forbid Phaser in the core, so scene-reading code belongs in the adapter layer.
+- Mostly Vite + Phaser 4 (one Phaser 3.90, which PHASEFORM does not support), JS or TS, with `CLAUDE.md` architecture rules in several. Some forbid Phaser in the core, so scene-reading code belongs in the adapter layer.
 - The games are largely procedural (hex maps, generated terrain). Hand-placed objects are rare today, so **visual scenes are assumed to be added**: title screens, HUDs, menus and battle staging.
 - Assets live in `public/assets`, `assets` at the root, or a flat `public/` (up to 742 files), and several have their own import tools.
 - Several projects have 2 to 5 scene classes, some running as overlays (UI over map).
-- `dungeon-strategy` has no `package.json` at its top level. `Kastro-Via` already uses Phaser Editor 2D (`.scene` files, `asset-pack.json`) and is out of scope except possibly for asset import.
+- `dungeon-strategy` has no `package.json` at its top level. `Kastro-Via` already uses Phaser Editor 2D and is out of scope except possibly for asset import.
 
 ## Principles
 
-1. **Zero footprint until you adopt.** Opening a project writes nothing. Saving a scene, importing an asset or changing a setting creates a `scenecaster/` folder (project file, scenes, asset manifest, a short format README). No changes to `package.json`, `src/`, `index.html` or the entry file.
-2. **Anything that touches game code is opt-in and removable.** That includes generated code and any optional runtime file. There is no live bridge: the loop is edit, save, and the game's own dev server reloads the browser. Adopting a project (below) is the one deliberate exception: an AI, started by you, changes the game to read its settings, scenes and assets from `scenecaster/`. Unadopted projects stay untouched.
-3. **Files are the API.** Scene and manifest formats are plain JSON: stable key order, readable names, small git diffs, documented in a `scenecaster/README.md` the AI can read. Names matter more than UUIDs for anything the AI has to reference.
-4. **Safe with a second writer.** The AI and git change files while the editor is open. Watch, reload, never clobber. File watching is the integration; the editor and the AI do not need a live connection. (An optional local tool interface is a nice-to-have in Phase 6.) Known limit: file watching cannot see unsaved editor changes, so the editor prompts when a file changes under unsaved edits.
-5. **Never edit the user's code.** The editor writes only inside `scenecaster/` and the assets folder. When a rename or move would break code references, it reports them. It does not rewrite code.
-6. **No data loss, boring reload.** (Tulio's release gates.)
-7. **One roadmap, small surface.** Anything needing its own panel family (animation, physics, particles) is out.
+1. **Zero footprint until you adopt.** Opening a project writes nothing. Saving a scene, importing an asset or changing a setting creates the project's PHASEFORM files and the editor's own folder. No changes to `package.json`, `src/`, `index.html` or the entry file.
+2. **Anything that touches game code is opt-in and removable.** There is no live bridge: the loop is edit, save, and the game's own dev server reloads the browser. Adopting a project is the one deliberate exception: an AI, started by you, changes the game to load its scenes through `phaseform-loader`. Unadopted projects stay untouched.
+3. **Files are the API.** Scene and project files are PHASEFORM: plain JSON, stable key order, readable names, small git diffs, validated by the PHASEFORM schemas. Names matter more than ids for anything the AI has to reference.
+4. **Safe with a second writer.** The AI and git change files while the editor is open. Watch, reload, never clobber. Known limit: file watching cannot see unsaved editor changes, so the editor prompts when a file changes under unsaved edits.
+5. **Never edit the user's code.** The editor writes only inside its folders (project file, scenes, assets, editor sidecar). When a rename or move would break code references, it reports them. It does not rewrite code.
+6. **No data loss, boring reload.**
+7. **Preserve what you do not understand.** PHASEFORM tools must keep unknown types and fields. The editor round-trips them.
+8. **The spec comes first.** New file-format behaviour goes into the PHASEFORM spec (its own repo) before the editor relies on it. Expect to change both repos together while the spec is draft v0.x.
+9. **One roadmap, small surface.** Anything needing its own panel family (physics, particles, tilemaps) is out.
 
-## What to borrow from Tulio
+## Scene format: PHASEFORM
 
-| Tulio idea | Verdict | Lite version |
+Detail and field mapping are in [PLAN-PHASEFORM-GODOT-UI.md](PLAN-PHASEFORM-GODOT-UI.md). Summary:
+
+| | Scenecaster v1 (today) | PHASEFORM (target) |
 |---|---|---|
-| Release gates: no data loss, save failure keeps dirty state, reload is boring | **Yes, first** | Phase 1 |
-| Export in four stages: model → validate → generate → verify | **Yes, adapted** | Validate-on-load (Phase 1); optional generated file (Phase 3) |
-| Output should read like normal Phaser; thin helper only | **Yes** | Generated code is plain Phaser, never a runtime dependency by default |
-| Command-pattern undo (`push({undo, redo})`) | **Yes** | Phase 1 |
-| Polling file watcher for external edits | **Yes, now essential** | Phase 1; the AI is the "external editor" |
-| Scene = file with `preloadAssets`, size, background | **Yes** | `scenecaster/scenes/<name>.scene.json` |
-| UUID ids, `locked`/`visible`; **plus unique readable names that are valid code identifiers** | **Yes** | Phase 1 |
-| Object definition vs instance (prefabs) | **Later** | Phase 5 |
-| Script property schema in the inspector, name-based references | **Optional, last** | Phase 6 |
-| Layers and hierarchy | **No** | Flat object list; z-order is a per-object `depth` (list order). No containers or nesting |
-| Camera persistence, grid, align/distribute, recent projects | **Cheap ones** | Phases 1 and 4 |
-| Playwright E2E with an ephemeral project | **Yes** | Phase 7 |
-| Signals, GML helpers, `TulioBehaviour` lifecycle, own game loop | **No** | Engine features |
-| Dock layout (dockview, resizable/persisted panels) | **Yes, revised** | Phase 1; panel sizing is broken today (see below) |
-| Monaco, Konva designer, hosted build, multi-engine export, monetization | **No** | Out of scope |
+| Structure | Flat list | Tree with `container` |
+| Object kinds | `sprite`, `primitive` | image, sprite, text, bitmapText, tileSprite, 7 shapes, container |
+| Rotation/scale/origin | `rotation`, `scaleX/Y`, `originX/Y` | `rotation`, `scale` and `origin` as vec2; no origin on containers |
+| Assets | path in `asset` | `key` into the project's asset manifest |
+| `anchor`, `interactive` | core fields | not in the spec |
+| Files | `scenecaster/scenes/*.scene.json`, `project.json` | `*.phaseform.json`, `phaseform.project.json` |
+| Rendering | the editor's own objects | `phaseform-loader` |
 
-## Flat, engine-neutral scene format
+Decisions assumed in this revision (change them here if wrong; the PHASEFORM plan lists them as open questions):
 
-The editor is a flat, simple scene editor (like AppGameKit Studio). Scene files are **engine-neutral** so a C#, MonoGame or raylib project can later load them with the same workflow. Schema: `docs/SCENE_FORMAT.md`.
-
-- **Core fields are engine-agnostic:** `name`, `id`, `kind`, `x`, `y`, `scale`, `rotation`, `depth`, `visible`, `locked`, `anchor`, `interactive`, and asset references by key/relative path.
-- **Engine-specific data** (scroll factor, blend, flip, tint; origin is core) lives under an optional namespaced `phaser` object, or is isolated in the Phaser view adapter. Another engine ignores it.
-- **Flat only:** no layers, containers or `parentId`. Order is `depth`.
-- **UI scenes:** an `overlay` scene draws over another. Named objects are the code contract (names must be valid code identifiers, so `playButton` maps to a variable or field). `anchor` places an object relative to a canvas edge/center with x/y as the offset; `interactive` marks objects the code will wire input to.
+- **PHASEFORM replaces v1.** Do not maintain both. A one-time `.scene.json` to `.phaseform.json` migration is provided.
+- **Unique, code-identifier names stay**, using PHASEFORM's `name` field, enforced by a Scenecaster validation rule.
+- **`anchor` and `interactive` stay editor-side for now**, in the editor sidecar (the PHASEFORM project doc calls for a separate sidecar spec), and are proposed upstream as a spec change. `anchor` changes how x/y are stored, so it applies to top-level objects only until the spec decides.
+- **Scene file location follows the PHASEFORM convention** (`scenes/*.phaseform.json` next to `phaseform.project.json`); Scenecaster keeps only editor-only data in its own `scenecaster/` folder.
+- **Godot reference theme: Modern** (the 4.8 default); check how it looks before committing.
 
 ## Phases
 
 Effort: **S** (under a day) · **M** (a few days) · **L** (a week or more).
 
-### Phase 0 — Foundation (from the architecture plan)
-- [x] **S** Script-name allowlist for `devserver:start` (command injection)
-- [x] **M** Main validates every path against the opened project folder. This is the enforcement point for principle 5: writes are allowed only under `scenecaster/` and the assets folder.
-- [x] **S** Check `ev.source` on `message` events (editor ↔ its own Phaser iframe)
-- [x] **S** Fix `npm install` ERESOLVE (pin vite 7, or wait for a compatible electron-vite)
-- [x] **M** Typed `protocol.ts` plus a single property-descriptor table
-- [x] **S** Store selectors
+### Phase 0: Foundation (done)
+- [x] Script-name allowlist for `devserver:start`; path guard in main (writes confined to the opened project); `ev.source` check; npm install fix (vite 7); typed `protocol.ts` and single property table; store selectors.
 
-### Phase 1 — A scene file you and an AI can both trust
-- [x] **M** Scene model in the renderer; Phaser is a view (architecture item 5)
-- [x] **M** Command-based history; add/delete/duplicate/rename become undoable
-- [x] **S** Move scene storage to `scenecaster/scenes/<name>.scene.json`
-- [ ] **S** **Naming:** the folder name is one constant in the editor. *(Partial: constant is `src/shared/layout.ts`; generated docs not started.)* `MIGRATE.md`, `check.mjs`, the README and the `CLAUDE.md` pointer are generated from it, so a future rename is a one-line change. The folder is a normal (not hidden) directory, because many search tools skip dot-folders.
-- [x] **S** AI-friendly format: relative asset paths, `version`, unique readable `name` per object, UUID `id` kept, stable key order, one object per few lines for clean diffs. Flat list, no `parentId`.
-- [ ] **S** *(Partial: `key` and `overlay` are saved and validated; no overlay backdrop in the viewport yet.)* Scene `key` field that must match the Phaser scene key, plus an `overlay` flag (the scene draws over another, so the editor shows a neutral backdrop and the canvas size comes from the game)
-- [x] **S** Project root discovery: Open Project finds the nearest `package.json` (e.g. `dungeon-strategy/game`) or lets you pick it; remembers it
-- [x] **S** Write nothing on open. Today the canvas-size prompt writes `.phaser-forge.json` immediately; defer that until a setting changes or something is saved.
-- [x] **S** **Engine profile:** `engine` ("phaser") in `scenecaster/project.json`; a data-driven profile table (`src/shared/props.ts`) lists the engine extension fields; the inspector renders core plus the active profile; validation warns on fields outside it.
-- [ ] **M** **`scenecaster/project.json`** *(Partial: file exists with canvas size and dev script only.)* (the project's metadata, read by both the editor and, once adopted, the game):
-  - game settings: canvas size, scale mode, physics, background colour, Phaser version
-  - scene registry: key, kind (`visual` / `logic` / `overlay`), layout file if any, boot order
-  - scene flow: which scene starts or launches which
-  - assets folder and dev script (replaces most of `.phaser-forge.json`)
-- [ ] **M** **Project overview panel:** shows `project.json`; editing a setting writes it back. Before a project is adopted it shows detected values instead (scan of `new Phaser.Game({...})`, `super('key')`, `scene: [...]`, `scene.start/launch('key')`), marked "detected, not saved".
-- [x] **S** **Watch scene files and reload on external change** (AI or git). If the scene is dirty, prompt instead of overwriting.
-- [x] **S** Dirty tracking; save failure never clears dirty; atomic write (temp file + rename); `.bak` of last good file. Run never saves implicitly: it prompts when the scene is dirty.
-- [x] **S** Validate on load: missing assets, duplicate names/ids, unknown kinds. Report in the UI.
-- [ ] **M** **Scene list** = scene registry (or, before adoption, the scanned scenes) joined with `scenecaster/scenes/*.scene.json`. Each scene shows a state: *layout + code*, *code only* (greyed, no canvas; Boot, Preload, Audio...), or *layout only* (warning: no scene with that key). "Create layout" on a code-only scene; rename/delete apply to layout files only and warn if a code scene still uses the key. One layout per scene key.
-- [ ] **S** *Optional:* scene flow view (Boot → Title → Game, UI launched over Game) drawn from the registry
-- [x] **M** **Disable live mode** (decided: not used, and the browser reloads on file changes anyway). Switch it off behind one flag, default off, rather than deleting it: hide the embedded game iframe, edit overlay, Install Bridge UI and live inspector, and keep `src/bridge/` and the live-mode code in the repo, unused. Keep **Run dev server** with its console and an **Open in browser** link (see Phase 6). Move the live-only code out of the main `App.tsx` path so disabling it also removes its state from the design-mode code; this makes it easy to re-enable later. Update the README, which still advertises live mode.
-- [x] **M** Clean up `App.tsx` (architecture item 4), now design mode only: hooks for the project, the scene and the dev server instead of one 989-line component
-- [x] **M** *(UI foundation, added scope)* **Panel layout via dockview** (borrow the approach from `SantasLair/tulio-editor` `src/core/Layout.ts`; it uses `dockview-core`, MIT-licensed, we use the `dockview` React package): resizable, collapsible, drag-to-rearrange panels (hierarchy, assets, inspector, console, viewport), layout persisted per user with a "Reset layout" command. Fixes the current panel sizing problems. tulio-editor is the owner's own closed-source code, so anything borrowed from it may be copied here and is released under this repo's MIT licence.
-- [x] **S** *(UI foundation, added scope)* **Context-aware UI:** one derived state (`uiState.ts`: no project, project without a scene, loading, blocked scene, scene open) drives the viewport, panels and toolbar. No project shows a welcome with Open Project; no scene shows "Select or create a scene" with New Scene; the Phaser canvas is not created (no assets loaded) until a scene exists; a blocked scene keeps the designer unavailable with its error.
-- [ ] **S** Multi-select, copy/paste, arrow-key nudge, per-scene camera persistence, recent projects
+### Phase 1: A scene file you and an AI can both trust (v1; mostly done)
+Built on the v1 format. Anything format-specific is redone in Phase 2; the editor machinery stays.
+- [x] Scene model in the renderer; command-based undo history; scenes in `scenecaster/scenes/`; AI-friendly format; project root discovery; write nothing on open; engine profile; watch scene files and reload; dirty tracking, atomic write and `.bak`; validate on load; live mode disabled behind one flag; `App.tsx` split into hooks; dockview panel layout; context-aware UI (`uiState.ts`); scene list and picker (open any scene with a layout).
+- [ ] **S** Scene `key` and `overlay`: saved and validated; no overlay backdrop in the viewport yet.
+- [ ] **M** `project.json` (partial: canvas size, engine and dev script only). *Becomes `phaseform.project.json` in Phase 2.*
+- [ ] **M** Project overview panel: shows the project file; editing a setting writes it back; before adoption shows detected values (scan of `new Phaser.Game({...})`, scene classes) marked "detected, not saved".
+- [ ] **M** Scene list joined to the scene registry (partial: picker exists). States: *layout + code*, *code only*, *layout only*. "Create layout" on a code-only scene.
+- [ ] **S** *Optional:* scene flow view drawn from the registry.
+- [ ] **S** Multi-select, copy/paste, arrow-key nudge, per-scene camera persistence, recent projects.
+- [ ] **S** Folder-name constant is in `src/shared/layout.ts`; the generated docs (`MIGRATE.md` and others) that read it are not started.
 
-### Phase 2 — Asset pipeline (your stated use case)
-> The editor is the place assets enter the project; the AI reads the result. This phase serves every target project, so it can start before multi-scene support is finished.
-- [ ] **S** **Assets folder auto-detection:** `public/assets`, `assets`, or `public`, overridable in `scenecaster/project.json`. The manifest stores both the file path (`public/assets/x.png`) and the URL the game loads (`assets/x.png`), because Vite serves `public/` from the site root.
-- [ ] **M** Import: drag files from the OS (or a file picker) into the asset browser; copy into the project's assets folder; choose destination subfolder; handle name collisions
-- [ ] **M** Asset kinds: image, spritesheet (frame width/height, margin/spacing; frames shown and pickable), atlas (JSON + image), audio (with preview), other
-- [ ] **M** **`scenecaster/assets.json` manifest:** key, path, kind, frame config. The AI uses it to write `preload()`; scenes reference assets by key. Keys are auto-suggested from the filename and editable.
-- [ ] **S** Rename/move asset updates the manifest and every scene file, and **lists code references** (grep of the project source) for the human or AI to fix. It does not edit code.
-- [ ] **S** Delete asset with a usage check (scenes and code references)
-- [ ] **S** Unused-asset and missing-asset report
-- [ ] **S** Optional size warnings (oversized textures, non-power-of-two spritesheets)
-- [ ] **S** Watch the assets folder, so files the AI or the human adds outside the editor appear
+### Phase 1b: Quick wins (can go any time)
+- [ ] **S** **Remove "Phaser Forge" naming**: the `⚡ Phaser Forge` toolbar label (`App.tsx`), `productName`, `appId` and package name in `package.json`, the viewport page title, and docs. Leave the disabled live-mode bridge files (`phaser-forge-bridge.*`) alone, and keep the README's credit line to the upstream project. Folded into Phase 9 only as a final sweep.
+- [ ] **S** Set up `THIRD_PARTY.md` (needed in Phase 3 for Godot icons).
 
-### Phase 3 — Hand-off to code and adopting existing projects
-> Make it trivial for an AI to use the project file, scenes and manifest, and to convert an existing game to them. Pick the lightest option that works.
+### Phase 2: Adopt PHASEFORM (format track, first)
+Phase A of the PHASEFORM plan. The riskiest piece is the viewport; the rest follows from it.
+- [x] **S** Add `phaseform-loader` as a dependency (published to npm, `^0.1.0`).
+- [~] **M** Viewport builds objects through the loader. *Done for the flat v1 objects (images, rectangle/ellipse/triangle); gizmos, anchors and tint applied on top. Still to do: build the whole scene document through `build()`, containers, text and the other types.*
+- [ ] **M** **Tree model:** `sceneModel.ts`, undo history (commands carry a path, reparenting is a command) and the Objects panel (drag-reorder depth becomes drag-reparent). Gizmo math applies parent transforms.
+- [ ] **M** **Schema-driven inspector** from `phaseform.schema.json`, replacing the table in `src/shared/props.ts`. Needs the schemas shipped in a package (see Phase 5, or bundle them into the loader).
+- [ ] **S** Validate on load and save with the PHASEFORM checks; results in the Problems panel; unknown types and fields preserved.
+- [ ] **M** Read and write `phaseform.project.json`: scene list, asset manifest. The Asset Browser writes manifest entries (key, type, url) instead of bare paths.
+- [ ] **M** **v1 migration** (`.scene.json` to `.phaseform.json`) with tests; port round-trip checks from the PHASEFORM conformance suite.
+- [ ] **S** Name uniqueness rule across the whole scene (the code contract), with rename reporting.
+- [ ] **S** Propose `anchor` and `interactive` to the PHASEFORM spec, and store them in the editor sidecar meanwhile.
+- [ ] **S** Rewrite `SCENE_FORMAT.md` as a short pointer to the PHASEFORM spec plus Scenecaster's extra rules.
+
+### Phase 3: Godot look and feel (look track)
+Step 1 does not depend on Phase 2 and can go first for a quick visible win. Godot's code is MIT, so porting algorithms is fine; its icons are CC BY 4.0 (attribute in `THIRD_PARTY.md`). Do not use Godot's logo or name in the UI.
+- [ ] **M** **Theme foundation.** Port Godot's theme derivation (`editor/themes/editor_theme_manager.cpp`): base colour, accent colour and contrast generate every surface shade as CSS variables, replacing the `@theme` tokens in `index.css`. Add Inter and JetBrains Mono (OFL). Use Godot's compact density and radius tokens. Check the Modern look first.
+- [ ] **M** **Icons.** Copy only the used SVGs from Godot's `editor/icons/` into `src/renderer/src/icons/`, recoloured with `currentColor`, behind an `Icon` component. Replace the lucide usages.
+- [ ] **L** **Components**, in this order: Objects panel (tree rows, disclosure arrows, inline visibility and lock), Inspector (two-column rows, collapsible sections, reset arrows, drag-to-scrub numbers), dockview tabs and splitters, menus and toolbars. Do the tree rows and inspector after Phase 2 steps 3 and 4 land, so they are restyled once.
+- [ ] **M** **Viewport chrome:** tool toolbar, zoom control, grid and snap menu, Godot's selection and gizmo colours on the overlay.
+- [ ] **M** **Layout and polish:** default arrangement (scene tree left, inspector right, files bottom-left, output bottom), reset-layout command, theme settings dialog, light and dark, and every state (hover, focus, disabled, selected-but-inactive).
+
+### Phase 4: Asset pipeline (rebased onto the PHASEFORM manifest)
+> The editor is the place assets enter the project; the AI reads the result. Can start once Phase 2's project-file work is in.
+- [ ] **S** Assets folder auto-detection (`public/assets`, `assets`, `public`), overridable. The manifest stores both the file path and the URL the game loads, because Vite serves `public/` from the site root.
+- [ ] **M** Import: drag files from the OS or a file picker into the asset browser; copy into the assets folder; choose a subfolder; handle name collisions.
+- [ ] **M** Asset kinds follow PHASEFORM's manifest types: image, spritesheet (frame size, margin, spacing; frames pickable), atlas, bitmapFont, audio (with preview).
+- [ ] **M** **Manifest in `phaseform.project.json`**: key, type, url, frame config. Keys are auto-suggested from the file name and editable. (This replaces the old `scenecaster/assets.json`.)
+- [ ] **S** Rename or move an asset: update the manifest and every scene file, and **list code references** (grep) for the human or AI to fix. It does not edit code.
+- [ ] **S** Delete asset with a usage check; unused and missing asset report; optional size warnings.
+- [ ] **S** Watch the assets folder.
+
+### Phase 5: Hand-off to code and adopting existing projects (rebased onto the toolkit)
+> Make it trivial for an AI to use the project file and scenes, and to convert an existing game. The toolkit already provides a loader, schemas, a CLI and a Vite plugin.
 
 **Adopting an existing project** (AI-run, one project at a time, started by you):
-- [ ] **M** `scenecaster/MIGRATE.md`: a prompt and checklist the editor writes for an AI to follow. Steps: create `scenecaster/project.json` from the game's real config and scene classes; extract **literal** placements (fixed x/y numbers) from scene code into layout JSON and leave computed or procedural positions alone; move asset loads into the manifest; make the game config, scene list and `preload()` read from `scenecaster/` (JSON imports bundled by Vite); keep behaviour identical; run the game or tests to check.
-- [ ] **S** "Adopt this project" button: writes `MIGRATE.md`, shows the one-line `CLAUDE.md` pointer to add, and records `adopted: true` once the drift check passes. Nothing in the game is changed by the editor itself.
-- [ ] **M** **Drift check**, on open and on file changes, with a copy-to-clipboard report for the AI: a scene class with no registry entry; a layout key matching no scene; an asset loaded in code that is not in the manifest; a manifest asset whose file is missing; a setting in `project.json` that the game config ignores.
-- [ ] **M** **`scenecaster/check.mjs`:** a dependency-free script the editor writes into the project. `node scenecaster/check.mjs` prints the same validation and drift report as the editor and exits non-zero on problems, so an AI can check its own work without the GUI, and a git hook or CI can run it. It carries a version, and the editor flags a stale copy. The editor and the script share one validation source in this repo so they cannot disagree. No full CLI: edits stay direct file edits.
-- [ ] **S** *Optional:* `check.mjs --fix-manifest` adds asset files found on disk to the manifest (for assets dropped in outside the editor)
-- [ ] **S** The `CLAUDE.md` pointer says to keep `scenecaster/` in sync when changing scenes, assets or settings, to run `node scenecaster/check.mjs` afterwards, and to put scene-reading code in the adapter layer where the project requires it.
-- [ ] **S** Pilot on one small project (`tiny-realms`, or `lords-of-kastrallia`) before the others; revise `MIGRATE.md` from what the AI got wrong.
+- [ ] **M** `MIGRATE.md`, written by the editor: create `phaseform.project.json` from the game's real config and scene classes; extract **literal** placements from scene code into scene documents and leave computed or procedural positions; move asset loads into the manifest; make the game load scenes through `phaseform-loader` (and `phaseform-vite-plugin` if it uses Vite); keep behaviour identical; run the game or tests to check.
+- [ ] **S** "Adopt this project" button: writes `MIGRATE.md`, shows the one-line `CLAUDE.md` pointer, records `adopted: true` once the drift check passes. Nothing in the game is changed by the editor itself.
+- [ ] **M** **Drift check** on open and on file changes, with a copy-to-clipboard report for the AI: a scene class with no registry entry; a scene file with no scene class; an asset loaded in code that is not in the manifest; a manifest file that is missing.
+- [ ] **M** **Validation without the GUI:** use `phaseform-cli validate`. Needs the CLI published with its schemas bundled (today it reads them from the repo root). The editor and the CLI share one validation source.
+- [ ] **S** The `CLAUDE.md` pointer says to keep the PHASEFORM files in sync when changing scenes, assets or settings, to run the validator afterwards, and to put scene-reading code in the adapter layer where the project requires it.
+- [ ] **S** Pilot on one small project (`tiny-realms` or `lords-of-kastrallia`); revise `MIGRATE.md` from what the AI got wrong.
 
 **Hand-off to code:**
-- [ ] **S** `scenecaster/README.md`, written by the editor: file formats, rules ("edit scenes via the editor or follow this schema"), and example loader snippets. A one-line pointer for the project's `CLAUDE.md`/`AGENTS.md` is offered, never inserted automatically.
-- [ ] **S** JSON Schema for scene and manifest files (`scenecaster/schema/*.json`), referenced from each file via `$schema` so editors and AIs can validate
-- [ ] **S** **Loader snippet in `scenecaster/README.md`:** about 30 to 60 lines of plain Phaser that build a scene's objects from its JSON (anchors, containers, text, nine-slice), to be copied into the project's scene or adapter layer. It is not an npm package and not an install step. Without it, an AI writes a different reader in every project; with it, they match and stay small.
-- [ ] **S** **Dev shortcut convention** in the snippet and `MIGRATE.md`: the game reads `?scene=<key>` (dev only) and starts there. Vite does a full page reload when a scene file changes, which restarts the game, so this brings you back to the scene you are editing. Several target games already use query flags (`?solo=1`, `?seed=`).
-- [ ] **M** "Copy as Phaser code" for one scene or selection (plain `this.add.*` calls)
-- [ ] **M** *Optional:* generate `scenecaster/generated/<Scene>.ts` (typed object names/keys and positions, never hand-edited, deterministic output). Off by default.
-- [ ] **S** **Scene preview image:** on save, write `scenecaster/previews/<Scene>.png` (git-ignored) so an AI can look at a layout without running the game
-- [ ] **S** **Copy context for AI:** copies the selected object's name, scene, layout file and values as text for pasting into a prompt
-- [ ] **S** "Copy for AI" button on the drift and validation reports
-- [ ] **S** Decision point after adopting two or three target projects: is the snippet enough, or is a real loader file needed (Phase 6)? Also check how the reload loop feels (full reload, `?scene=`).
+- [ ] **S** `README` for the project files, written by the editor: formats, rules ("edit scenes via the editor or follow the PHASEFORM schema"), a pointer to the loader. A one-line `CLAUDE.md`/`AGENTS.md` pointer is offered, never inserted automatically. *(The old "loader snippet" and "JSON Schema" items are dropped: the published loader and schemas replace them.)*
+- [ ] **S** **Dev shortcut convention** in `MIGRATE.md`: the game reads `?scene=<key>` (dev only) and starts there, because Vite does a full page reload when a scene file changes.
+- [ ] **M** "Copy as Phaser code" for one scene or selection.
+- [ ] **S** **Scene preview image:** on save, write `previews/<Scene>.png` (git-ignored) so an AI can look at a layout without running the game.
+- [ ] **S** **Copy context for AI** (selected object's name, scene, file, values), and "Copy for AI" on the drift and validation reports.
+- [ ] **S** Decision point after two or three adopted projects: does the loader plus `MIGRATE.md` suffice? How does the reload loop feel?
 
-### Phase 4 — Object types that earn their keep
-- [ ] **M** Image, Text, NineSlice (panels), TileSprite. No Container/Group: the model stays flat (deferred, maybe never).
-- [ ] **M** **Anchors for UI scenes:** each object anchors to a canvas edge or center (top-right, bottom-center, ...) with an offset, so a HUD survives different canvas sizes and FIT scaling. The editor previews at a few canvas sizes; the loader snippet applies the anchors.
-- [ ] **S** **Button object type (early in this phase):** one flat object (image or nine-slice plus optional label text, `interactive` on, a name that is the code contract). No behaviour; the AI wires the clicks.
-- [ ] **S** Objects panel: drag-reorder sets depth (done in Phase 1); optional grouping by depth ranges
-- [ ] **S** Align/distribute for multi-selection
-- [ ] **S** Show the Phaser key in the Objects panel and inspector
+### Phase 6: Phaser object types and editing (PHASEFORM Phase B)
+Most types arrive with Phase 2 (the loader builds them); this phase adds editor UI for each, ordered by what the target projects need.
+- [ ] **M** **Containers:** nesting and local transforms in the gizmos.
+- [ ] **M** Text and bitmapText; shapes (7); tileSprite; nine-slice if the spec adds it.
+- [ ] **S** **Button** object (image or panel plus optional label, `interactive` on, a name that is the code contract). No behaviour; the AI wires the clicks.
+- [ ] **M** **Anchors for UI scenes** as editor data (see Phase 2), previewed at a few canvas sizes.
+- [ ] **M** Animations (defined in the project file).
+- [ ] **M** Filters and masks with live preview.
+- [ ] **S** Attaching scripts by path.
+- [ ] **S** Align/distribute for multi-selection; show the Phaser key in the Objects panel and inspector.
 
-### Phase 5 — Prefab-lite
-- [ ] **M** Object definition (`scenecaster/objects/*.object.json`) plus instances that reference it
-- [ ] **M** Per-instance overrides shown as "overridden" in the inspector
-- [ ] **S** Prefab library panel
+### Phase 7: Prefab-lite (blocked)
+PHASEFORM leaves prefabs and templates out of v0.1 ("may come later as a separate spec"). Do not invent a Scenecaster format.
+- [ ] **S** Propose a prefab design upstream first.
+- [ ] **M** Then: object definitions plus instances, per-instance overrides shown as "overridden", a prefab library panel.
 
-### Phase 6 — Dev loop and optional extras
+### Phase 8: Dev loop and optional extras
 > No live mode. Your browser, running the game's own dev server, is the live view.
-- [ ] **S** **Run dev server** keeps working (existing: script detection, console, stop, process-tree kill) and gains an **Open in browser** link, with `?scene=<key>` for the selected scene. Neither needs anything installed in the game.
-- [ ] **S** **Old bridge cleanup:** if a project has `phaser-forge-bridge.js` (e.g. `forge-editor-test`), say so and list the import and `installForgeBridge` lines to remove. The editor does not edit code; it may offer to delete the bridge file.
-- [ ] **M** *Optional:* `scenecaster-runtime.js` (about 150 lines): `loadScene(scene, json)` as a real file, only if the Phase 3 snippet proves too weak. Needed first by the Phaser 3 project, if at all.
-- [ ] **M** *Optional:* behaviours with inspector properties from `static properties` (Tulio's schema)
-- [ ] **S** *Optional:* Arcade body flags on an instance
-- [ ] **L** *Nice to have:* local MCP server so an AI (e.g. Claude Code) can work with the open editor.
-  - Off by default; localhost only, with a token; confined to the project folder by the Phase 0 path checks.
-  - Read: open project, current scene, selection, drift report, canvas screenshot.
-  - Navigate: open scene, select object, reload.
-  - Write: edit an object through the editor's undo history, so the editor stays the single writer and unsaved changes are never clobbered.
-  - Build only if file watching plus the Phase 3 preview and context buttons prove too clumsy in real AI sessions.
+- [ ] **S** **Run dev server** (existing) gains an **Open in browser** link, with `?scene=<key>`.
+- [ ] **S** **Old bridge cleanup:** if a project has `phaser-forge-bridge.js`, say so and list the lines to remove. The editor does not edit code.
+- [ ] **M** *Optional:* behaviours with inspector properties.
+- [ ] **L** *Nice to have:* local MCP server so an AI can work with the open editor. Off by default, localhost only with a token, confined to the project folder. Build only if file watching plus the preview and context buttons prove too clumsy.
 
-### Phase 7 — Release
-- [ ] **M** Vitest (store/history/migration/validation/asset rename); Playwright E2E on an ephemeral sample project; lint; CI
-- [ ] **M** Windows/macOS/Linux installers, changelog, example project
-- [ ] **S** Rename remaining "Phaser Forge" references to Scenecaster (docs, `package.json`, window title, app id); mark old docs superseded
+### Phase 9: Release
+- [ ] **M** Vitest (store, history, migration, validation, asset rename); Playwright E2E on an ephemeral sample project; lint; CI.
+- [ ] **M** Windows/macOS/Linux installers, changelog, example project.
+- [ ] **S** Final sweep for any remaining "Phaser Forge" references (docs, installer strings); mark old docs superseded; `THIRD_PARTY.md` complete.
 
-### Validation — tested against
+### Validation: tested against
 
-Before calling Phase 3 done, run the whole loop (open, see scenes and settings, adopt with an AI, import an asset, build a scene, AI writes the code that uses it, edit again, drift check clean) on at least these. Pilot on `tiny-realms` or `lords-of-kastrallia` first:
+Before calling Phase 5 done, run the whole loop (open, see scenes and settings, adopt with an AI, import an asset, build a scene, AI writes the code that uses it, edit again, drift check clean) on at least these. Pilot on `tiny-realms` or `lords-of-kastrallia` first:
 
 | Project | Why |
 |---|---|
@@ -181,25 +193,25 @@ Before calling Phase 3 done, run the whole loop (open, see scenes and settings, 
 | `ember-keep` | Flat `public/` with 742 assets; folder detection and performance |
 | `mini-world` | Root-level `assets/`, JS |
 | `dungeon-strategy` | No `package.json` at the top; root discovery |
-| `quick-civ-roguelite` | Phaser 3.90 |
+| `quick-civ-roguelite` | Phaser 3.90: **not supported by PHASEFORM**; drop it from the list or keep it as a "fails gracefully" test |
 
 Not a target: `Kastro-Via` (Phaser Editor 2D owns its scenes).
 
 ### Explicitly out of scope
-Animation editor, visual physics editor, particle editor, tile/hex map painting (the target games generate their maps in code), live mode (embedded game viewer, runtime inspection and the bridge; the browser reloads on file changes instead), Play/Pause/Step mode, embedded Monaco, GML helpers, signals, own game loop, editing the user's source code, hosted web version, multi-engine export.
+Visual physics editor, particle editor, tile/hex map painting (the target games generate their maps in code), live mode (embedded game viewer, runtime inspection and the bridge), Play/Pause/Step mode, embedded Monaco, own game loop, editing the user's source code, hosted web version, multi-engine export (PHASEFORM is Phaser 4).
 
 ## Risks and open decisions
 
-- **Raw JSON vs snippet vs generated code vs runtime file.** Phase 3 ships the snippet (cheapest consistent option) and defers the rest. Let two or three real AI sessions on target projects show whether it is enough.
-- **Architecture rules in target projects.** Where `CLAUDE.md` forbids Phaser in the core, scene reading must live in the adapter layer. The `scenecaster/README.md` pointer should say so rather than assume.
-- **Two writers.** An AI editing a scene file while the editor has unsaved edits is the main data-loss risk. The prompt-on-conflict rule and `.bak` are not optional.
-- **Names vs ids.** AI-written code will reference objects by name, so names must be unique and renames should be visible in diffs. Decide whether renames are blocked, warned or allowed.
-- **Rename can break code silently.** The editor reports code references but cannot fix them. An AI can; consider emitting a ready-to-paste "rename report".
-- **Unsaved changes are invisible to file watching.** If the AI edits a layout while the editor holds unsaved edits to it, one side loses. The rule is to prompt (keep mine / take theirs / save mine as a copy). Decide whether to shrink the window with a short debounced autosave of scene files, which would make the editor's state reach disk within about a second but removes the explicit "unsaved" state; undo history would be the safety net.
-- **Drift after adoption.** Later AI sessions can change code and leave `scenecaster/` stale (a new scene class, an asset loaded directly). The drift check and the `CLAUDE.md` pointer reduce this; they cannot prevent it. Decide whether the check should block `Run` or only warn.
-- **Lossy extraction.** Moving placements out of code only works for literal numbers. Positions computed from other values stay in code, so some scenes will be partly editable. `MIGRATE.md` must say so and the AI must report what it left behind.
-- **Adoption makes the game depend on `scenecaster/`.** Metadata is bundled as JSON imports, so removing `scenecaster/` breaks an adopted game. Provide an "un-adopt" path (the AI inlines the data back) or accept it as one-way; decide before the pilot.
-- **Competing asset manifests.** Target projects have their own loaders and import tools (e.g. `npm run sprites`). After adoption `scenecaster/assets.json` is the list `preload()` reads, so a tool that writes assets must update it (or the drift check flags it).
-- **Phaser 3 vs 4.** Tulio targets Phaser 3, and one target project does too. The editor's design mode runs its own Phaser 4, which is fine; verify the loader snippet on 3.90.
-- **The reload loop is a full page reload.** Vite cannot hot-swap a Phaser scene, so each save restarts the game. `?scene=<key>` helps for UI scenes; scenes deep in a level may still be slow to reach. Revisit after the pilot.
-- **Disabled live-mode code rots.** Decided: disable behind a flag, don't delete. Disabled code drifts out of date as the scene model and protocol change, and it is still typechecked and built. Keep it isolated (own folder, no imports from design-mode code), exclude it from tests, and revisit deleting it after the pilot if it hasn't been re-enabled. Projects that already installed the bridge (`forge-editor-test`) keep working; it only talks to an editor that no longer listens.
+- **Tree versus flat.** Gizmo math, undo, anchors and drag-reorder assume a flat list. Containers need parent transforms while dragging, and anchors are ambiguous for nested objects (limit them to top-level objects).
+- **Spec instability.** PHASEFORM is draft v0.1: fields may still change. Expect to change both repos together; new behaviour goes into the spec first. Pin the loader version and re-run the conformance cases on each bump.
+- **Published packages are partial.** Only `phaseform-loader` is on npm. The CLI needs the schemas bundled and the Vite plugin needs a real dependency on the CLI before either can be published; Phases 2 (inspector, validation) and 5 depend on that.
+- **Phaser 3 is out.** One target project is on Phaser 3.90, which PHASEFORM does not support.
+- **Two writers.** An AI editing a scene file while the editor has unsaved edits is the main data-loss risk. The prompt-on-conflict rule and `.bak` are not optional. Decide whether a short debounced autosave would shrink the window.
+- **Names vs ids.** AI-written code references objects by name, so names must be unique across the whole tree (not only per parent). Decide whether renames are blocked, warned or allowed, and whether to emit a ready-to-paste rename report.
+- **Drift after adoption.** Later AI sessions can change code and leave the PHASEFORM files stale. The drift check and the `CLAUDE.md` pointer reduce this; decide whether the check blocks `Run` or only warns.
+- **Lossy extraction.** Moving placements out of code only works for literal numbers. Computed positions stay in code, so some scenes will be partly editable. `MIGRATE.md` must say so.
+- **Adoption makes the game depend on PHASEFORM files and `phaseform-loader`.** Provide an "un-adopt" path (the AI inlines the data back) or accept it as one-way; decide before the pilot.
+- **Competing asset manifests.** Target projects have their own loaders and import tools. After adoption `phaseform.project.json` is the list, so a tool that writes assets must update it (or the drift check flags it).
+- **The reload loop is a full page reload.** Vite cannot hot-swap a Phaser scene; `?scene=<key>` helps for UI scenes. Revisit after the pilot.
+- **Disabled live-mode code rots.** Keep it isolated (own folder, no imports from design-mode code), exclude it from tests, and revisit deleting it after the pilot.
+- **Third-party material.** Godot icons are CC BY 4.0: keep attribution current. Check the licence of anything else borrowed before shipping.
