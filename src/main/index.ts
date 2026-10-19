@@ -380,9 +380,9 @@ app.whenReady().then(() => {
   /** One level of a folder, folders first, for the lazy FileSystem tree. Symlinks that leave the project are skipped. */
   ipcMain.handle('fs:listDir', (_e, rawDir: unknown) => {
     const dir = guardFolder(rawDir);
-    if (!dir) return [];
+    if (!dir) return null; // outside the opened project, or not a folder: distinct from an empty folder
     let entries: fs.Dirent[];
-    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return []; }
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return null; }
     const out: { name: string; type: 'folder' | 'file'; path: string; ext: string }[] = [];
     for (const entry of entries) {
       const full = path.join(dir, entry.name);

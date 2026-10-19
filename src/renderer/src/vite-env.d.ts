@@ -38,7 +38,8 @@ interface ElectronAPI {
   openFolder: () => Promise<string | null>;
   readAssets: (folder: string) => Promise<AssetEntry[]>;
   fileToDataUrl: (path: string) => Promise<string | null>;
-  listDir: (dir: string) => Promise<FsEntry[]>;
+  /** null: the folder is outside the opened project or cannot be read. */
+  listDir: (dir: string) => Promise<FsEntry[] | null>;
   findFiles: (dir: string, query: string) => Promise<FsEntry[]>;
   showItem: (path: string) => Promise<void>;
   readProjectConfig: (folder: string) => Promise<ProjectConfig | null>;
