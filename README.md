@@ -27,16 +27,16 @@ Placing things in a Phaser game by typing coordinates and reloading is slow. Sce
 - **Visual viewport** — Phaser 4 scene rendered at your game's exact canvas resolution (e.g. 1280×720). What you see = what you get.
 - **Click to select** — bounding box + gizmo handles appear on selected objects
 - **Tool modes** — Select · Move · Rotate · Scale (Q/W/E/R)
-- **Inspector** — edit x, y, rotation, scaleX/Y, alpha, tint, visible, depth, originX/Y with live feedback
-- **Origin presets** — 9-point grid (TL/TC/TR/CL/C/CR/BL/BC/BR) so origin always matches your game
+- **Inspector** — fields per object type (position, rotation, scale, origin, alpha, tint, blend mode, text, shapes, textures...), with live feedback; anything it does not know is kept and editable as raw JSON
 - **Asset browser** — scan your project's `/assets` folder, drag images onto the viewport
-- **Primitives** — add rectangles, circles and triangles as placeholders
+- **Object types** — containers (nesting), rectangles, ellipses, triangles, text and images; every PHASEFORM object type opens and round-trips
 - **Camera pan/zoom** — middle mouse to pan, scroll wheel to zoom toward cursor, F to reset
-- **Hierarchy panel** — click to select, right-click for rename/duplicate/delete, per-object lock and visibility
+- **Objects tree** — nested containers, drag to reorder or reparent, right-click for add/rename/duplicate/delete, per-object lock and visibility
 - **Undo/Redo** — Ctrl+Z / Ctrl+Y, up to 100 steps
 - **Snap to grid** — toggleable 32px snap
-- **Save / load** — layout stored in `scenecaster/scenes/main.scene.json` in your project (Ctrl+S): readable, one object per line, validated on load
-- **Per-project config** — canvas size and dev script saved to `scenecaster/project.json`
+- **PHASEFORM files** — scenes are [PHASEFORM](https://github.com/SantasLair/phaseform) documents (`scenes/*.phaseform.json`) listed in `phaseform.project.json`, together with the asset manifest. Ctrl+S writes plain, stable JSON, validated against the PHASEFORM schemas on load; fields the editor does not know are preserved
+- **Editor settings** — the chosen dev script is saved to `scenecaster/editor.json`
+- **FileSystem panel** — browse the project, double-click a scene to open it
 - **Run dev server** — start your game's dev script from the editor, watch its console, and open the game in your browser (live mode, which embedded the running game, is switched off)
 
 ---
@@ -84,7 +84,7 @@ npm run dev
 
 1. Click **📁 Open Project** in the toolbar
 2. Select your Phaser 4 project folder
-3. Enter your game's canvas size (e.g. `1280 × 720`) — saved to `scenecaster/project.json` for next time
+3. If the folder has no `phaseform.project.json`, choose the canvas size of the first scene; the project file is created on your first save
 4. Drag assets from the **Assets** panel onto the viewport
 
 ---

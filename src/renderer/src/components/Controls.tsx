@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { SCENE_NAME_RE } from '../../../shared/layout';
+import { isSceneKey } from '../../../shared/phaseform/format';
 
 interface FieldProps {
   label: string;
@@ -86,10 +86,9 @@ export function SetupDialog({ onConfirm, onCancel }: {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
       <div className="bg-gray-800 border border-gray-600 rounded-lg shadow-2xl p-6 w-80">
-        <h2 className="text-sm font-semibold text-white mb-1">Project Canvas Size</h2>
+        <h2 className="text-sm font-semibold text-white mb-1">New PHASEFORM project</h2>
         <p className="text-xs text-gray-400 mb-5 leading-relaxed">
-          Match the size to your Phaser game config.<br />
-          Check <span className="text-gray-300 font-mono">GAME_WIDTH</span> / <span className="text-gray-300 font-mono">GAME_HEIGHT</span> in your constants.
+          This folder has no <span className="text-gray-300 font-mono">phaseform.project.json</span>. Choose the canvas size of the first scene; nothing is written until you save.
         </p>
         <div className="space-y-3 mb-5">
           {sizeInput('Width (px)', w, setW, 1280, 7680)}
@@ -114,14 +113,14 @@ export function SetupDialog({ onConfirm, onCancel }: {
 
 /** Scene selector: the project's scenes (one layout file per scene key) and an inline "new scene" field. */
 export function ScenePicker({ scenes, current, hasFile, onOpen, onCreate }: {
-  scenes: SceneEntry[]; current: string; hasFile: boolean; onOpen: (key: string) => void; onCreate: (key: string) => void;
+  scenes: { key: string }[]; current: string; hasFile: boolean; onOpen: (key: string) => void; onCreate: (key: string) => void;
 }) {
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
   const taken = scenes.some(s => s.key.toLowerCase() === name.toLowerCase());
-  const valid = SCENE_NAME_RE.test(name) && !taken;
+  const valid = isSceneKey(name) && !taken;
   const submit = () => { if (valid) { onCreate(name); setAdding(false); setName(''); } };
-  const keys = scenes.some(s => s.key === current) ? scenes : [...scenes, { key: current, hasFile }];
+  const keys = scenes.some(s => s.key === current) ? scenes : [...scenes, { key: current }];
   return (
     <div className="flex items-center gap-1 mr-1">
       {adding ? (
@@ -133,7 +132,7 @@ export function ScenePicker({ scenes, current, hasFile, onOpen, onCreate }: {
       ) : (
         <select value={current} onChange={e => onOpen(e.target.value)} title="Scene"
           className="max-w-40 px-2 py-1.5 rounded text-xs bg-gray-800 border border-gray-700 text-gray-300 hover:border-gray-600 focus:border-blue-500 outline-none">
-          {keys.map(s => <option key={s.key} value={s.key}>{s.key}{s.hasFile ? '' : ' (no layout yet)'}</option>)}
+          {keys.map(s => <option key={s.key} value={s.key}>{s.key}</option>)}
         </select>
       )}
       <button onClick={() => setAdding(true)} title="New scene"

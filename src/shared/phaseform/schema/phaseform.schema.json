@@ -1,0 +1,1567 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://phaseform.dev/schema/0.1.0/phaseform.schema.json",
+  "title": "PHASEFORM scene",
+  "description": "A PHASEFORM v0.1 scene document for Phaser 4. Structure only: behavior (draw order, defaults, id uniqueness, valid frames, asset resolution) is defined in docs/SPEC.md and must be enforced by the loader.",
+  "type": "object",
+  "required": ["format", "version", "key", "size", "objects"],
+  "properties": {
+    "format": {
+      "const": "phaseform"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$",
+      "description": "Spec version the file was written against (semver)."
+    },
+    "key": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Scene key, matching the key used with Phaser's scene manager."
+    },
+    "size": {
+      "type": "object",
+      "required": ["width", "height"],
+      "properties": {
+        "width": { "type": "number", "exclusiveMinimum": 0 },
+        "height": { "type": "number", "exclusiveMinimum": 0 }
+      },
+      "additionalProperties": true,
+      "description": "Game size in pixels (the Phaser game config width and height). All scenes in a game should agree."
+    },
+    "background": {
+      "type": "string",
+      "description": "Background color as a CSS color string."
+    },
+    "objects": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/object" },
+      "description": "Ordered list of objects. At the scene root, draw order is depth, then list position."
+    },
+    "extensions": {
+      "$ref": "#/$defs/extensions"
+    }
+  },
+  "additionalProperties": true,
+
+  "$defs": {
+    "extensions": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9-]*$"
+      },
+      "description": "Extension data keyed by lowercase extension name. Loaders must preserve extensions they do not understand."
+    },
+
+    "vec2": {
+      "type": "object",
+      "required": ["x", "y"],
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" }
+      },
+      "additionalProperties": true
+    },
+
+    "color": {
+      "type": "string",
+      "pattern": "^#[0-9a-fA-F]{6}$",
+      "description": "Color as #rrggbb. Converted to Phaser's numeric tint."
+    },
+
+    "tintMode": {
+      "enum": ["multiply", "fill", "add", "screen", "overlay", "hard-light"],
+      "description": "Maps to Phaser's TintModes. Default multiply."
+    },
+
+    "blendMode": {
+      "enum": ["normal", "add", "multiply", "screen"],
+      "description": "The blend modes WebGL renders natively. Default normal for image, sprite and text; a container has none by default (its children keep their own). Phaser silently treats unknown names as normal, so loaders must reject unknown values."
+    },
+
+    "object": {
+      "type": "object",
+      "required": ["id", "type"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Unique within the scene. Uniqueness is not expressible in JSON Schema and must be checked by the loader."
+        },
+        "type": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Object type. Open registry: unknown types are valid and must be preserved."
+        },
+        "name": { "type": "string", "default": "" },
+        "x": { "type": "number", "default": 0 },
+        "y": { "type": "number", "default": 0 },
+        "depth": {
+          "type": "number",
+          "default": 0,
+          "description": "Draw order at the scene root. Ignored for children of a container, where list order decides."
+        },
+        "alpha": { "type": "number", "minimum": 0, "maximum": 1, "default": 1 },
+        "visible": { "type": "boolean", "default": true },
+        "active": { "type": "boolean", "default": true },
+        "scrollFactor": {
+          "$ref": "#/$defs/vec2",
+          "description": "Default {1, 1}. On a container it affects the container only."
+        },
+        "data": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Free key/value data applied with the game object's data manager."
+        },
+        "scripts": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Script modules to attach, relative to the project root. Each may export create and update hooks, see docs/SPEC.md (Scripts)."
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Plain JSON handed to the attached scripts. Lets one script serve many objects."
+        },
+        "placeholder": { "$ref": "#/$defs/placeholder" },
+        "extensions": { "$ref": "#/$defs/extensions" },
+        "filters": { "$ref": "#/$defs/filters" },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/object" },
+          "description": "Child objects. Valid only for type container."
+        },
+
+        "origin": { "$ref": "#/$defs/vec2", "description": "Default {0.5, 0.5} for image and sprite, {0, 0} for text. Invalid on container." },
+        "scale": { "$ref": "#/$defs/vec2", "description": "Default {1, 1}." },
+        "rotation": { "type": "number", "default": 0, "description": "Radians. Phaser normalizes to between -pi and pi." },
+        "flipX": { "type": "boolean", "default": false },
+        "flipY": { "type": "boolean", "default": false },
+        "tint": { "$ref": "#/$defs/color", "description": "Default #ffffff. Invalid on container." },
+        "tintMode": { "$ref": "#/$defs/tintMode" },
+        "blendMode": { "$ref": "#/$defs/blendMode" },
+        "fill": { "$ref": "#/$defs/fill" },
+        "stroke": { "$ref": "#/$defs/stroke" },
+            "dropShadow": { "$ref": "#/$defs/dropShadow" },
+        "animation": { "$ref": "#/$defs/animation" }
+      },
+      "additionalProperties": true,
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "container" } }, "required": ["type"] },
+          "then": {
+            "not": {
+              "anyOf": [
+                { "required": ["origin"] },
+                { "required": ["flipX"] },
+                { "required": ["flipY"] },
+                { "required": ["tint"] },
+                { "required": ["tintMode"] },
+                { "required": ["width"] },
+                { "required": ["height"] }
+              ]
+            }
+          },
+          "else": { "not": { "required": ["children"] } }
+        },
+        {
+          "if": { "properties": { "type": { "enum": ["image", "sprite", "tileSprite"] } }, "required": ["type"] },
+          "then": { "$ref": "#/$defs/visualImage" }
+        },
+        {
+          "if": { "properties": { "type": { "enum": ["image", "tileSprite", "text", "bitmapText", "container", "graphics", "rectangle", "ellipse", "triangle", "line", "polygon", "star", "arc"] } }, "required": ["type"] },
+          "then": { "not": { "required": ["animation"] } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "tileSprite" } }, "required": ["type"] },
+          "then": {
+            "allOf": [
+              { "$ref": "#/$defs/tileSprite" },
+              { "not": { "required": ["children"] } }
+            ]
+          }
+        },
+        {
+          "if": { "properties": { "type": { "enum": ["rectangle", "ellipse", "triangle", "line", "polygon", "star", "arc"] } }, "required": ["type"] },
+          "then": { "$ref": "#/$defs/shape" }
+        },
+        {
+          "if": { "properties": { "type": { "const": "bitmapText" } }, "required": ["type"] },
+          "then": {
+            "allOf": [
+              { "$ref": "#/$defs/bitmapText" },
+              { "not": { "anyOf": [{ "required": ["flipX"] }, { "required": ["flipY"] }, { "required": ["children"] }] } }
+            ]
+          }
+        },
+        { "if": { "properties": { "type": { "const": "rectangle" } }, "required": ["type"] }, "then": { "$ref": "#/$defs/rectangle" } },
+        { "if": { "properties": { "type": { "const": "ellipse" } }, "required": ["type"] }, "then": { "$ref": "#/$defs/ellipse" } },
+        { "if": { "properties": { "type": { "const": "triangle" } }, "required": ["type"] }, "then": { "$ref": "#/$defs/triangle" } },
+        { "if": { "properties": { "type": { "const": "line" } }, "required": ["type"] }, "then": { "$ref": "#/$defs/line" } },
+        { "if": { "properties": { "type": { "const": "polygon" } }, "required": ["type"] }, "then": { "$ref": "#/$defs/polygon" } },
+        { "if": { "properties": { "type": { "const": "star" } }, "required": ["type"] }, "then": { "$ref": "#/$defs/star" } },
+        { "if": { "properties": { "type": { "const": "arc" } }, "required": ["type"] }, "then": { "$ref": "#/$defs/arc" } },
+        {
+          "if": { "properties": { "type": { "const": "text" } }, "required": ["type"] },
+          "then": {
+            "allOf": [
+              { "$ref": "#/$defs/text" },
+              { "not": { "anyOf": [{ "required": ["flipX"] }, { "required": ["flipY"] }] } }
+            ]
+          }
+        }
+      ]
+    },
+
+    "fill": {
+      "type": "object",
+      "required": ["color"],
+      "properties": {
+        "color": { "$ref": "#/$defs/color" },
+        "alpha": { "type": "number", "minimum": 0, "maximum": 1, "default": 1 }
+      },
+      "additionalProperties": true,
+      "description": "Shape fill. Absent means not filled. Valid on shapes only, and not on line."
+    },
+
+    "stroke": {
+      "type": "object",
+      "required": ["color"],
+      "properties": {
+        "color": { "$ref": "#/$defs/color" },
+        "width": { "type": "number", "minimum": 0, "default": 1, "description": "Stroke width in pixels. On a line this is the start width." },
+        "endWidth": { "type": "number", "minimum": 0, "description": "Line only. End width of a tapered stroke (WebGL). Defaults to width." },
+        "alpha": { "type": "number", "minimum": 0, "maximum": 1, "default": 1 }
+      },
+      "additionalProperties": true,
+      "description": "Shape outline. Absent means not stroked. Valid on shapes only."
+    },
+
+    "animation": {
+      "type": "object",
+      "required": ["key"],
+      "properties": {
+        "key": { "type": "string", "minLength": 1, "description": "Key of an animation in the project's animations." },
+        "startFrame": { "type": "integer", "minimum": 0, "default": 0, "description": "Index into the animation's frames to start from." }
+      },
+      "additionalProperties": true,
+      "description": "Sprite only. The animation playing when the scene is created."
+    },
+
+    "tileSprite": {
+      "type": "object",
+      "required": ["width", "height"],
+      "properties": {
+        "width": { "type": "number", "minimum": 1, "description": "Size of the tiled area in pixels. Phaser rounds it down to a whole number." },
+        "height": { "type": "number", "minimum": 1 },
+        "tilePosition": { "$ref": "#/$defs/vec2", "description": "Scroll offset of the tiling texture inside the area. Default {0, 0}." },
+        "tileScale": { "$ref": "#/$defs/vec2", "description": "Scale of the tiling texture inside the area. Default {1, 1}." },
+        "tileRotation": { "type": "number", "default": 0, "description": "Rotation of the tiling texture in radians." }
+      }
+    },
+
+    "dropShadow": {
+      "type": "object",
+      "required": ["x", "y"],
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "color": { "$ref": "#/$defs/color", "description": "Default #000000." },
+        "alpha": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.5 }
+      },
+      "additionalProperties": true,
+      "description": "Bitmap text shadow. Phaser draws it only when x or y is not 0."
+    },
+
+    "bitmapText": {
+      "type": "object",
+      "required": ["font", "text"],
+      "properties": {
+        "font": { "type": "string", "minLength": 1, "description": "Key of a bitmapFont asset." },
+        "text": { "type": "string" },
+        "size": { "type": "number", "exclusiveMinimum": 0, "description": "Font size in pixels. Defaults to the size stored in the font data." },
+        "align": { "enum": ["left", "center", "right"], "default": "left" },
+        "letterSpacing": { "type": "number", "default": 0 },
+        "lineSpacing": { "type": "number", "default": 0 },
+        "maxWidth": { "type": "number", "minimum": 0, "default": 0, "description": "Wrap width in pixels. 0 means no wrapping." }
+      }
+    },
+
+    "shape": {
+      "not": {
+        "anyOf": [
+          { "required": ["tint"] },
+          { "required": ["tintMode"] },
+          { "required": ["flipX"] },
+          { "required": ["flipY"] },
+          { "required": ["children"] }
+        ]
+      },
+      "description": "Shapes have no tint or flip. They are filled and stroked through fill and stroke."
+    },
+
+    "rectangle": {
+      "type": "object",
+      "required": ["width", "height"],
+      "properties": {
+        "width": { "type": "number", "minimum": 0 },
+        "height": { "type": "number", "minimum": 0 }
+      }
+    },
+
+    "ellipse": {
+      "type": "object",
+      "required": ["width", "height"],
+      "properties": {
+        "width": { "type": "number", "minimum": 0 },
+        "height": { "type": "number", "minimum": 0 },
+        "smoothness": { "type": "integer", "minimum": 1, "default": 64, "description": "Number of segments used to draw the outline." }
+      }
+    },
+
+    "triangle": {
+      "type": "object",
+      "required": ["points"],
+      "properties": {
+        "points": { "type": "array", "minItems": 3, "maxItems": 3, "items": { "$ref": "#/$defs/vec2" }, "description": "The three corners, in the shape's local space." }
+      }
+    },
+
+    "line": {
+      "type": "object",
+      "required": ["points", "stroke"],
+      "properties": {
+        "points": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "$ref": "#/$defs/vec2" }, "description": "Start and end, in the shape's local space." }
+      },
+      "not": { "required": ["fill"] },
+      "description": "A line is only visible through its stroke, so stroke is required and fill is invalid."
+    },
+
+    "polygon": {
+      "type": "object",
+      "required": ["points"],
+      "properties": {
+        "points": { "type": "array", "minItems": 3, "items": { "$ref": "#/$defs/vec2" }, "description": "Vertices in the shape's local space." }
+      }
+    },
+
+    "star": {
+      "type": "object",
+      "required": ["innerRadius", "outerRadius"],
+      "properties": {
+        "pointCount": { "type": "integer", "minimum": 2, "default": 5, "description": "Number of points. Phaser calls this property points." },
+        "innerRadius": { "type": "number", "minimum": 0 },
+        "outerRadius": { "type": "number", "minimum": 0 }
+      }
+    },
+
+    "arc": {
+      "type": "object",
+      "required": ["radius"],
+      "properties": {
+        "radius": { "type": "number", "minimum": 0 },
+        "startAngle": { "type": "number", "default": 0, "description": "Degrees, as Phaser takes them." },
+        "endAngle": { "type": "number", "default": 360, "description": "Degrees, as Phaser takes them." },
+        "anticlockwise": { "type": "boolean", "default": false },
+        "iterations": { "type": "number", "exclusiveMinimum": 0, "default": 0.01, "description": "Smoothness of the rendered arc. Smaller is smoother." }
+      }
+    },
+
+    "placeholder": {
+      "type": "object",
+      "description": "Editor-only reference visual for an object whose appearance comes from code. A conforming loader never draws it. width and height are required when the placeholder shows a visual, and are exposed to scripts as the object size. The box spans (0, 0) to (width, height) in the object's local space.",
+      "properties": {
+        "kind": { "enum": ["rect", "ellipse", "polygon", "image"] },
+        "width": { "type": "number", "exclusiveMinimum": 0 },
+        "height": { "type": "number", "exclusiveMinimum": 0 },
+        "fill": { "$ref": "#/$defs/color" },
+        "stroke": { "$ref": "#/$defs/color" },
+        "strokeWidth": { "type": "number", "minimum": 0 },
+        "alpha": { "type": "number", "minimum": 0, "maximum": 1 },
+        "points": {
+          "type": "array",
+          "minItems": 3,
+          "items": { "$ref": "#/$defs/vec2" },
+          "description": "Polygon vertices in local space. Polygon only."
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Reference image path relative to the project root. It is not an asset key and is never loaded by the game. Image only."
+        }
+      },
+      "required": ["kind", "width", "height"],
+      "allOf": [
+        { "if": { "properties": { "kind": { "const": "polygon" } } }, "then": { "required": ["points"] }, "else": { "not": { "required": ["points"] } } },
+        { "if": { "properties": { "kind": { "const": "image" } } }, "then": { "required": ["path"] }, "else": { "not": { "required": ["path"] } } }
+      ],
+      "additionalProperties": true
+    },
+
+    "visualImage": {
+      "type": "object",
+      "required": ["key"],
+      "properties": {
+        "key": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Texture key the scene expects to be loaded. PHASEFORM does not define how it is loaded."
+        },
+        "frame": {
+          "oneOf": [
+            { "type": "integer", "minimum": 0 },
+            { "type": "string", "minLength": 1 }
+          ],
+          "description": "Frame index or name within the texture. Defaults to the texture's default frame. Phaser silently falls back to the default frame when it is missing, so loaders must validate it."
+        }
+      },
+      "additionalProperties": true
+    },
+
+    "text": {
+      "type": "object",
+      "required": ["text"],
+      "properties": {
+        "text": { "type": "string" },
+        "style": {
+          "type": "object",
+          "description": "Phaser text style config, passed through unchanged (nested shadow and wordWrap objects, padding inside). Phaser defaults: Courier, 16px, white. metrics, if present, must be preserved because it changes text height.",
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+
+    "filters": {
+      "type": "object",
+      "properties": {
+        "internal": {
+          "$ref": "#/$defs/filterList"
+        },
+        "external": {
+          "$ref": "#/$defs/filterList"
+        }
+      },
+      "additionalProperties": true,
+      "description": "Phaser 4 filters, including masks. internal follows the object; external works in camera space. See docs/SPEC.md (Filters and masks)."
+    },
+    "filterList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/filter"
+      },
+      "description": "Filters applied in array order."
+    },
+    "filterBlendMode": {
+      "enum": [
+        "normal",
+        "add",
+        "multiply",
+        "screen",
+        "overlay",
+        "darken",
+        "lighten",
+        "color-dodge",
+        "color-burn",
+        "hard-light",
+        "soft-light",
+        "difference",
+        "exclusion",
+        "hue",
+        "saturation",
+        "color",
+        "luminosity",
+        "erase",
+        "source-in",
+        "source-out",
+        "source-atop",
+        "destination-over",
+        "destination-in",
+        "destination-out",
+        "destination-atop",
+        "lighter",
+        "copy",
+        "xor"
+      ],
+      "description": "All Phaser blend modes. The blend filter renders them with its own shader."
+    },
+    "colorBand": {
+      "type": "object",
+      "properties": {
+        "colorStart": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/color"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 4,
+              "maxItems": 4
+            }
+          ]
+        },
+        "colorEnd": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/color"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 4,
+              "maxItems": 4
+            }
+          ]
+        },
+        "start": {
+          "type": "number",
+          "default": 0
+        },
+        "middle": {
+          "type": "number",
+          "default": 0.5
+        },
+        "end": {
+          "type": "number",
+          "default": 1
+        },
+        "size": {
+          "type": "number"
+        },
+        "interpolation": {
+          "type": "number",
+          "default": 0
+        },
+        "colorSpace": {
+          "type": "number",
+          "default": 0
+        }
+      },
+      "additionalProperties": true,
+      "description": "A band of Phaser's ColorRamp."
+    },
+    "filter": {
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Filter type. Unknown types are skipped by loaders and kept on save."
+        },
+        "active": {
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "additionalProperties": true,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "barrel"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "amount": {
+                "type": "number",
+                "default": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "blend"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "texture": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Asset key from the project manifest."
+              },
+              "blendMode": {
+                "$ref": "#/$defs/filterBlendMode",
+                "default": "normal"
+              },
+              "amount": {
+                "type": "number",
+                "default": 1
+              },
+              "color": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4,
+                "default": [
+                  1,
+                  1,
+                  1,
+                  1
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "blocky"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "size": {
+                "$ref": "#/$defs/vec2"
+              },
+              "offset": {
+                "$ref": "#/$defs/vec2"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "blur"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "quality": {
+                "type": "number",
+                "default": 0
+              },
+              "x": {
+                "type": "number",
+                "default": 2
+              },
+              "y": {
+                "type": "number",
+                "default": 2
+              },
+              "strength": {
+                "type": "number",
+                "default": 1
+              },
+              "color": {
+                "$ref": "#/$defs/color"
+              },
+              "steps": {
+                "type": "number",
+                "default": 4
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "bokeh"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "radius": {
+                "type": "number",
+                "default": 0.5
+              },
+              "amount": {
+                "type": "number",
+                "default": 1
+              },
+              "contrast": {
+                "type": "number",
+                "default": 0.2
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "colorMatrix"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "matrix": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 20,
+                "maxItems": 20,
+                "description": "4x5 color matrix, row by row. Default identity."
+              },
+              "alpha": {
+                "type": "number",
+                "default": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "combineColorMatrix"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "texture": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Asset key from the project manifest."
+              },
+              "matrixSelf": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 20,
+                "maxItems": 20,
+                "description": "4x5 color matrix, row by row. Default identity."
+              },
+              "matrixTransfer": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 20,
+                "maxItems": 20,
+                "description": "4x5 color matrix, row by row. Default identity."
+              },
+              "additions": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4,
+                "default": [
+                  1,
+                  1,
+                  1,
+                  0
+                ]
+              },
+              "multiplications": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4,
+                "default": [
+                  0,
+                  0,
+                  0,
+                  1
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "displacement"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "texture": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Asset key from the project manifest."
+              },
+              "x": {
+                "type": "number",
+                "default": 0.005
+              },
+              "y": {
+                "type": "number",
+                "default": 0.005
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "glow"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "color": {
+                "$ref": "#/$defs/color"
+              },
+              "outerStrength": {
+                "type": "number",
+                "default": 4
+              },
+              "innerStrength": {
+                "type": "number",
+                "default": 0
+              },
+              "scale": {
+                "type": "number",
+                "default": 1
+              },
+              "knockout": {
+                "type": "boolean",
+                "default": false
+              },
+              "quality": {
+                "type": "number",
+                "description": "Default: game config glowQuality (10)."
+              },
+              "distance": {
+                "type": "number",
+                "description": "Default: game config glowDistance (10)."
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "gradientMap"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "ramp": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/colorBand"
+                },
+                "minItems": 1
+              },
+              "dither": {
+                "type": "boolean",
+                "default": false
+              },
+              "color": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4,
+                "default": [
+                  0,
+                  0,
+                  0,
+                  0
+                ]
+              },
+              "colorFactor": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4,
+                "default": [
+                  0.3,
+                  0.6,
+                  0.1,
+                  0
+                ]
+              },
+              "unpremultiply": {
+                "type": "boolean",
+                "default": true
+              },
+              "alpha": {
+                "type": "number",
+                "default": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "imageLight"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "normalMap": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Asset key from the project manifest."
+              },
+              "environmentMap": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Asset key from the project manifest."
+              },
+              "modelRotation": {
+                "type": "number",
+                "default": 0
+              },
+              "modelRotationSource": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Id of an object in the same scene."
+              },
+              "bulge": {
+                "type": "number",
+                "default": 0
+              },
+              "colorFactor": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3,
+                "default": [
+                  1,
+                  1,
+                  1
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "key"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "color": {
+                "$ref": "#/$defs/color"
+              },
+              "alpha": {
+                "type": "number",
+                "default": 1
+              },
+              "isolate": {
+                "type": "boolean",
+                "default": false
+              },
+              "threshold": {
+                "type": "number",
+                "default": 0.0625
+              },
+              "feather": {
+                "type": "number",
+                "default": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "mask"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "source": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Id of an object in the same scene."
+              },
+              "texture": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Asset key from the project manifest."
+              },
+              "invert": {
+                "type": "boolean",
+                "default": false
+              },
+              "viewTransform": {
+                "enum": [
+                  "world",
+                  "local"
+                ],
+                "default": "world"
+              },
+              "scaleFactor": {
+                "type": "number",
+                "default": 1,
+                "exclusiveMinimum": 0
+              },
+              "autoUpdate": {
+                "type": "boolean",
+                "default": true
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "normalTools"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "rotation": {
+                "type": "number",
+                "default": 0
+              },
+              "rotationSource": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Id of an object in the same scene."
+              },
+              "facingPower": {
+                "type": "number",
+                "default": 1
+              },
+              "outputRatio": {
+                "type": "boolean",
+                "default": false
+              },
+              "ratioVector": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3,
+                "default": [
+                  0,
+                  0,
+                  1
+                ]
+              },
+              "ratioRadius": {
+                "type": "number",
+                "default": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "panoramaBlur"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "radius": {
+                "type": "number",
+                "default": 1
+              },
+              "samplesX": {
+                "type": "number",
+                "default": 32
+              },
+              "samplesY": {
+                "type": "number",
+                "default": 16
+              },
+              "power": {
+                "type": "number",
+                "default": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "parallel"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "top": {
+                "$ref": "#/$defs/filterList"
+              },
+              "bottom": {
+                "$ref": "#/$defs/filterList"
+              },
+              "blend": {
+                "type": "object",
+                "properties": {
+                  "blendMode": {
+                    "$ref": "#/$defs/filterBlendMode",
+                    "default": "normal"
+                  },
+                  "amount": {
+                    "type": "number",
+                    "default": 1
+                  },
+                  "color": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 4,
+                    "maxItems": 4,
+                    "default": [
+                      1,
+                      1,
+                      1,
+                      1
+                    ]
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "pixelate"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "amount": {
+                "type": "number",
+                "default": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "quantize"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "steps": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4,
+                "default": [
+                  8,
+                  8,
+                  8,
+                  8
+                ]
+              },
+              "gamma": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4,
+                "default": [
+                  1,
+                  1,
+                  1,
+                  1
+                ]
+              },
+              "offset": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4,
+                "default": [
+                  0,
+                  0,
+                  0,
+                  0
+                ]
+              },
+              "mode": {
+                "enum": [
+                  "rgba",
+                  "hsva"
+                ],
+                "default": "rgba"
+              },
+              "dither": {
+                "type": "boolean",
+                "default": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "shadow"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "x": {
+                "type": "number",
+                "default": 0
+              },
+              "y": {
+                "type": "number",
+                "default": 0
+              },
+              "decay": {
+                "type": "number",
+                "default": 0.1
+              },
+              "power": {
+                "type": "number",
+                "default": 1
+              },
+              "color": {
+                "$ref": "#/$defs/color"
+              },
+              "samples": {
+                "type": "number",
+                "default": 6
+              },
+              "intensity": {
+                "type": "number",
+                "default": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "threshold"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "edge1": {
+                "oneOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 4,
+                    "maxItems": 4
+                  }
+                ]
+              },
+              "edge2": {
+                "oneOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 4,
+                    "maxItems": 4
+                  }
+                ]
+              },
+              "invert": {
+                "oneOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "boolean"
+                    },
+                    "minItems": 4,
+                    "maxItems": 4
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "tiltShift"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "radius": {
+                "type": "number",
+                "default": 0.5
+              },
+              "amount": {
+                "type": "number",
+                "default": 1
+              },
+              "contrast": {
+                "type": "number",
+                "default": 0.2
+              },
+              "blurX": {
+                "type": "number",
+                "default": 1
+              },
+              "blurY": {
+                "type": "number",
+                "default": 1
+              },
+              "strength": {
+                "type": "number",
+                "default": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "vignette"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "x": {
+                "type": "number",
+                "default": 0.5
+              },
+              "y": {
+                "type": "number",
+                "default": 0.5
+              },
+              "radius": {
+                "type": "number",
+                "default": 0.5
+              },
+              "strength": {
+                "type": "number",
+                "default": 0.5
+              },
+              "color": {
+                "$ref": "#/$defs/color"
+              },
+              "blendMode": {
+                "$ref": "#/$defs/blendMode",
+                "default": "normal"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "wipe"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "progress": {
+                "type": "number",
+                "default": 0
+              },
+              "wipeWidth": {
+                "type": "number",
+                "default": 0.1
+              },
+              "direction": {
+                "enum": [
+                  "left-to-right",
+                  "right-to-left",
+                  "top-to-bottom",
+                  "bottom-to-top"
+                ],
+                "default": "left-to-right"
+              },
+              "reveal": {
+                "type": "boolean",
+                "default": false
+              },
+              "texture": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Asset key from the project manifest."
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "mask"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "source",
+                "texture"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

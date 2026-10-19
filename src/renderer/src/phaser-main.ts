@@ -1,57 +1,100 @@
 import * as Phaser from 'phaser';
 import { build as buildPhaseform } from 'phaseform-loader';
-import { PROP_KEYS, describe, type ObjectProps } from '../../shared/props';
-import { resolveAnchor, toOffset } from '../../shared/anchor';
 import {
   isMessage, unhandled,
-  type EditorToViewport, type ViewportToEditor, type Anchor, type LoadSceneObject, type Shape, type ToolMode,
+  type EditorToViewport, type ViewportToEditor, type ToolMode, type ViewAsset, type LiveField,
 } from '../../shared/protocol';
-
-const params = new URLSearchParams(window.location.search);
-const CANVAS_W = parseInt(params.get('w') ?? '1280');
-const CANVAS_H = parseInt(params.get('h') ?? '720');
+import type { PfObject, PfScene, Vec2 } from '../../shared/phaseform/types';
+import { subtreeIds, walk } from '../../shared/phaseform/tree';
 
 const ARROW_LEN = 65;
 const ROT_RADIUS = 60;
 const HANDLE_SZ = 14;
 const GRID = 32;
-const PRIMITIVE_SZ = 64;
-const CANVAS = { w: CANVAS_W, h: CANVAS_H };
+const PLACEHOLDER_SZ = 64;
 
-type Sprite = Phaser.GameObjects.Sprite;
+// Editor graphics sit far outside any depth a document is likely to use.
+const D_OUTSIDE = -1e9;
+const D_CANVAS = -1e9 + 1;
+const D_GRID = -1e9 + 2;
+const D_BORDER = 1e9;
+const D_SEL = 1e9 + 1;
+const D_GIZMO = 1e9 + 2;
+const D_HANDLE = 1e9 + 3;
 
-const WHITE = { color: '#ffffff', alpha: 1 };
+type GO = Phaser.GameObjects.GameObject;
+type Matrix = Phaser.GameObjects.Components.TransformMatrix;
 
-/** The PHASEFORM object for a scene object; `key` is the loaded texture of a sprite. Position is applied afterwards (anchors). */
-function toPhaseform(obj: LoadSceneObject, key?: string): Record<string, unknown> {
-  const base = { id: obj.id, name: obj.name, x: 0, y: 0 };
-  if (obj.kind === 'sprite') return { ...base, type: 'image', key };
-  const S = PRIMITIVE_SZ;
-  if (obj.shape === 'rect') return { ...base, type: 'rectangle', width: S, height: S, fill: WHITE };
-  if (obj.shape === 'circle') return { ...base, type: 'ellipse', width: S, height: S, fill: WHITE };
-  return { ...base, type: 'triangle', fill: WHITE, points: [{ x: S / 2, y: 0 }, { x: S, y: S }, { x: 0, y: S }] };
+/** What the viewport touches on a built object; every loader-built type has the transform part. */
+interface Live extends GO {
+  x: number; y: number; rotation: number; scaleX: number; scaleY: number;
+  getWorldTransformMatrix(temp?: Matrix, parent?: Matrix): Matrix;
+  setScale(x: number, y?: number): unknown;
+  setAlpha(a: number): unknown;
+  setVisible(v: boolean): unknown;
+  setDepth(d: number): unknown;
+  setOrigin?(x: number, y?: number): unknown;
+  setFlipX?(v: boolean): unknown;
+  setFlipY?(v: boolean): unknown;
+  getBounds?(out?: Phaser.Geom.Rectangle): Phaser.Geom.Rectangle;
 }
+const live = (go: GO) => go as Live;
+
+const FLIPPABLE = new Set(['image', 'sprite', 'tileSprite']);
+const ORIGIN_ZERO = new Set(['text', 'bitmapText']);
+const NO_ORIGIN = new Set(['container', 'graphics']);
 
 const post = (msg: ViewportToEditor) => window.parent.postMessage(msg, '*');
+const round = (v: number, places: number) => { const f = 10 ** places; return Math.round(v * f) / f; };
+const num = (v: unknown, def: number) => (typeof v === 'number' && Number.isFinite(v) ? v : def);
+const vec = (v: unknown, def: Vec2): Vec2 => {
+  const o = v as Partial<Vec2> | null | undefined;
+  return { x: num(o?.x, def.x), y: num(o?.y, def.y) };
+};
+const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+/** Any CSS colour as a Phaser colour number and alpha (the browser parses it, so names and rgb() work too). */
+function cssColor(s: string | undefined, fallback: string): { color: number; alpha: number } {
+  const ctx = document.createElement('canvas').getContext('2d');
+  if (!ctx) return { color: 0, alpha: 1 };
+  ctx.fillStyle = fallback;
+  if (s) ctx.fillStyle = s;
+  const v = String(ctx.fillStyle);
+  if (v.startsWith('#')) return { color: parseInt(v.slice(1, 7), 16), alpha: 1 };
+  const n = (v.match(/[\d.]+/g) ?? []).map(Number);
+  return { color: ((n[0] ?? 0) << 16) | ((n[1] ?? 0) << 8) | (n[2] ?? 0), alpha: n[3] ?? 1 };
+}
 
 class EditorScene extends Phaser.Scene {
-  private sprites = new Map<string, Sprite>();
-  /** Anchor per object: the scene stores offsets, this view resolves them against the canvas. */
-  private anchors = new Map<string, Anchor | null>();
+  /** Top-level objects built from the document (placeholders included), in document order. */
+  private roots: GO[] = [];
+  private objById = new Map<string, GO>();
+  private idByObj = new Map<GO, string>();
+  private typeById = new Map<string, string>();
 
-  private selectedSprite: Sprite | null = null;
   private selectedId: string | null = null;
 
+  private outsideGfx!: Phaser.GameObjects.Graphics;
+  private canvasGfx!: Phaser.GameObjects.Graphics;
+  private gridGfx!: Phaser.GameObjects.Graphics;
+  private borderGfx!: Phaser.GameObjects.Graphics;
   private selGfx!: Phaser.GameObjects.Graphics;
   private gizmoGfx!: Phaser.GameObjects.Graphics;
   private bounds = new Phaser.Geom.Rectangle();
+  private mA = new Phaser.GameObjects.Components.TransformMatrix();
+  private mB = new Phaser.GameObjects.Components.TransformMatrix();
 
   private hX!: Phaser.GameObjects.Rectangle;
   private hY!: Phaser.GameObjects.Rectangle;
   private hRot!: Phaser.GameObjects.Rectangle;
   private hSX!: Phaser.GameObjects.Rectangle;
   private hSY!: Phaser.GameObjects.Rectangle;
-  private handleStart = { hx: 0, hy: 0, x: 0, y: 0, scaleX: 1, scaleY: 1 };
+  private handles: GO[] = [];
+  /** World position and local scale of the selection when a handle drag started, and the handle's position. */
+  private handleStart = { hx: 0, hy: 0, wx: 0, wy: 0, scaleX: 1, scaleY: 1 };
+  private handleMoved = false;
+  /** Drag of an object's body: pointer and object start positions in world space. */
+  private bodyDrag: { id: string; px: number; py: number; wx: number; wy: number; moved: boolean } | null = null;
 
   private toolMode: ToolMode = 'select';
   private snapOn = false;
@@ -60,86 +103,129 @@ class EditorScene extends Phaser.Scene {
   private isPanning = false;
   private panStart = { x: 0, y: 0, scrollX: 0, scrollY: 0 };
 
+  /** Texture keys with the asset description they were made from. Textures persist across LOAD_SCENE. */
+  private texSig = new Map<string, string>();
+  /** Textures still decoding, keyed by texture key; every build waits for all of them. */
+  private texPending = new Map<string, Promise<string | null>>();
+  private animSig = new Map<string, string>();
+  private loadToken = 0;
+  /** SET_OBJECT messages received while a build waits for textures; applied once it is built. */
+  private queued: Extract<EditorToViewport, { type: 'SET_OBJECT' }>[] | null = null;
+  private sceneSize = { width: 1280, height: 720 };
+
   constructor() { super('EditorScene'); }
 
   create() {
     this.cameras.main.setBackgroundColor('#1e1e1e');
-    this.drawCanvasFrame();
+    this.outsideGfx = this.add.graphics().setDepth(D_OUTSIDE);
+    this.canvasGfx = this.add.graphics().setDepth(D_CANVAS);
+    this.gridGfx = this.add.graphics().setDepth(D_GRID);
+    this.borderGfx = this.add.graphics().setDepth(D_BORDER);
+    this.drawFrame(this.sceneSize, undefined);
 
-    this.selGfx = this.add.graphics().setDepth(997);
-    this.gizmoGfx = this.add.graphics().setDepth(998);
+    this.selGfx = this.add.graphics().setDepth(D_SEL);
+    this.gizmoGfx = this.add.graphics().setDepth(D_GIZMO);
 
     const makeHandle = () =>
       this.add.rectangle(0, 0, HANDLE_SZ, HANDLE_SZ, 0xff0000, 0)
-        .setDepth(999).setVisible(false).setInteractive({ draggable: true });
+        .setDepth(D_HANDLE).setVisible(false).setInteractive({ draggable: true });
     this.hX = makeHandle();
     this.hY = makeHandle();
     this.hRot = makeHandle();
     this.hSX = makeHandle();
     this.hSY = makeHandle();
-    const handles: Phaser.GameObjects.GameObject[] = [this.hX, this.hY, this.hRot, this.hSX, this.hSY];
+    this.handles = [this.hX, this.hY, this.hRot, this.hSX, this.hSY];
 
-    // dragX/dragY are the handle's start position plus pointer delta, so work from a snapshot taken at dragstart.
-    const onHandleDrag = (handle: Phaser.GameObjects.Rectangle, apply: (s: Sprite, dragX: number, dragY: number) => void) => {
+    // Handles are top-level editor objects, so dragX/dragY are world coordinates (start position plus pointer delta).
+    const onHandleDrag = (handle: Phaser.GameObjects.Rectangle, apply: (o: Live, id: string, dragX: number, dragY: number) => void) => {
       handle.on('dragstart', () => {
-        const s = this.selectedSprite;
-        if (!s) return;
-        this.handleStart = { hx: handle.x, hy: handle.y, x: s.x, y: s.y, scaleX: s.scaleX, scaleY: s.scaleY };
+        const o = this.selected();
+        if (!o) return;
+        const w = this.worldPos(o);
+        this.handleStart = { hx: handle.x, hy: handle.y, wx: w.x, wy: w.y, scaleX: o.scaleX, scaleY: o.scaleY };
+        this.handleMoved = false;
       });
       handle.on('drag', (_p: Phaser.Input.Pointer, dragX: number, dragY: number) => {
-        if (!this.selectedSprite) return;
-        apply(this.selectedSprite, dragX, dragY);
-        this.notifyTransform();
+        const o = this.selected();
+        if (!o || !this.selectedId || this.isLocked(this.selectedId)) return;
+        this.handleMoved = true;
+        apply(o, this.selectedId, dragX, dragY);
       });
-      handle.on('dragend', () => post({ type: 'PUSH_HISTORY' }));
+      handle.on('dragend', () => {
+        if (this.handleMoved) post({ type: 'PUSH_HISTORY' });
+        this.handleMoved = false;
+      });
     };
-    onHandleDrag(this.hX, (s, dragX) => {
+    onHandleDrag(this.hX, (o, id, dragX) => {
       const st = this.handleStart;
-      s.x = this.snap(st.x + dragX - st.hx);
+      this.moveTo(o, id, this.snap(st.wx + dragX - st.hx), st.wy);
     });
-    onHandleDrag(this.hY, (s, _dragX, dragY) => {
+    onHandleDrag(this.hY, (o, id, _dragX, dragY) => {
       const st = this.handleStart;
-      s.y = this.snap(st.y + dragY - st.hy);
+      this.moveTo(o, id, st.wx, this.snap(st.wy + dragY - st.hy));
     });
-    onHandleDrag(this.hRot, (s, dragX, dragY) => {
-      s.rotation = Math.atan2(dragY - s.y, dragX - s.x) + Math.PI / 2;
+    onHandleDrag(this.hRot, (o, id, dragX, dragY) => {
+      const w = this.worldPos(o);
+      const worldAngle = Math.atan2(dragY - w.y, dragX - w.x) + Math.PI / 2;
+      const parent = o.parentContainer ? this.worldRotation(o.parentContainer) : 0;
+      // Phaser wraps rotation on assignment, which can add float noise, so report the rounded value itself.
+      const rotation = round(Phaser.Math.Angle.Wrap(worldAngle - parent), 4);
+      o.rotation = rotation;
+      post({ type: 'OBJECT_TRANSFORMED', id, x: round(o.x, 2), y: round(o.y, 2), rotation });
     });
-    onHandleDrag(this.hSX, (s, dragX) => {
+    onHandleDrag(this.hSX, (o, id, dragX) => {
       const st = this.handleStart;
-      s.scaleX = Math.max(0.05, st.scaleX * (dragX - st.x) / (st.hx - st.x));
+      const sx = round(Math.max(0.05, st.scaleX * (dragX - st.wx) / (st.hx - st.wx)), 3);
+      o.setScale(sx, o.scaleY);
+      post({ type: 'OBJECT_TRANSFORMED', id, x: round(o.x, 2), y: round(o.y, 2), scale: { x: o.scaleX, y: o.scaleY } });
     });
-    onHandleDrag(this.hSY, (s, _dragX, dragY) => {
+    onHandleDrag(this.hSY, (o, id, _dragX, dragY) => {
       const st = this.handleStart;
-      s.scaleY = Math.max(0.05, st.scaleY * (st.y - dragY) / (st.y - st.hy));
+      const sy = round(Math.max(0.05, st.scaleY * (st.wy - dragY) / (st.wy - st.hy)), 3);
+      o.setScale(o.scaleX, sy);
+      post({ type: 'OBJECT_TRANSFORMED', id, x: round(o.x, 2), y: round(o.y, 2), scale: { x: o.scaleX, y: o.scaleY } });
     });
 
-    this.input.on('drag', (_p: Phaser.Input.Pointer, go: Phaser.GameObjects.GameObject, dragX: number, dragY: number) => {
-      if (handles.includes(go) || this.isPanning) return;
+    // Dragging an object's body moves it (select and move tools). Worked out in world space, reported in local space.
+    this.input.on('dragstart', (p: Phaser.Input.Pointer, go: GO) => {
+      if (this.handles.includes(go)) return;
+      const id = this.idByObj.get(go);
+      if (!id) return;
+      const pt = this.cameras.main.getWorldPoint(p.x, p.y);
+      const w = this.worldPos(live(go));
+      this.bodyDrag = { id, px: pt.x, py: pt.y, wx: w.x, wy: w.y, moved: false };
+    });
+    this.input.on('drag', (p: Phaser.Input.Pointer, go: GO) => {
+      const d = this.bodyDrag;
+      if (!d || this.handles.includes(go) || this.isPanning) return;
       if (this.toolMode !== 'select' && this.toolMode !== 'move') return;
-      const s = go as Sprite;
-      const id = this.idOf(s);
-      if (!id || this.lockedIds.has(id)) return;
-      s.x = this.snap(dragX);
-      s.y = this.snap(dragY);
-      post({ type: 'OBJECT_TRANSFORMED', id, ...this.offsetOf(id, s) });
+      if (this.idByObj.get(go) !== d.id || this.isLocked(d.id)) return;
+      const pt = this.cameras.main.getWorldPoint(p.x, p.y);
+      if (!d.moved && pt.x === d.px && pt.y === d.py) return;
+      d.moved = true;
+      this.moveTo(live(go), d.id, this.snap(d.wx + pt.x - d.px), this.snap(d.wy + pt.y - d.py));
     });
-    this.input.on('dragend', (_p: Phaser.Input.Pointer, go: Phaser.GameObjects.GameObject) => {
-      if (!handles.includes(go)) post({ type: 'PUSH_HISTORY' });
+    this.input.on('dragend', (_p: Phaser.Input.Pointer, go: GO) => {
+      if (this.handles.includes(go)) return;
+      if (this.bodyDrag?.moved) post({ type: 'PUSH_HISTORY' });
+      this.bodyDrag = null;
     });
 
-    this.input.on('pointerdown', (p: Phaser.Input.Pointer, gos: Phaser.GameObjects.GameObject[]) => {
+    this.input.on('pointerdown', (p: Phaser.Input.Pointer, gos: GO[]) => {
       if (p.middleButtonDown()) {
         const cam = this.cameras.main;
         this.isPanning = true;
         this.panStart = { x: p.x, y: p.y, scrollX: cam.scrollX, scrollY: cam.scrollY };
         return;
       }
-      const target = gos.find(g => !handles.includes(g)) as Sprite | undefined;
-      if (target) {
-        const id = this.idOf(target);
-        if (id && !this.lockedIds.has(id)) this.selectSprite(id, target);
-      } else if (gos.length === 0) {
-        this.deselect();
+      if (gos.some(g => this.handles.includes(g))) return;
+      // Only unlocked, visible leaves are interactive (see makePickable / applyLocks), so the top hit is the pick.
+      const id = gos.map(g => this.idByObj.get(g)).find((i): i is string => !!i && !this.isLocked(i));
+      if (id) {
+        if (id !== this.selectedId) { this.selectedId = id; post({ type: 'OBJECT_SELECTED', id }); }
+      } else if (gos.length === 0 && this.selectedId !== null) {
+        this.selectedId = null;
+        post({ type: 'OBJECT_DESELECTED' });
       }
     });
     this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
@@ -172,16 +258,20 @@ class EditorScene extends Phaser.Scene {
   }
 
   update() {
-    const s = this.selectedSprite;
     this.selGfx.clear();
     this.gizmoGfx.clear();
     this.hideHandles();
-    if (!s) return;
-    s.getBounds(this.bounds);
+    const o = this.selected();
+    if (!o) return;
+    const w = this.worldPos(o);
+    if (o.getBounds) o.getBounds(this.bounds);
+    else this.bounds.setTo(w.x, w.y, 0, 0);
     this.drawSelection(this.bounds);
-    if (this.toolMode === 'rotate') this.drawRotateGizmo(s, this.bounds);
-    else if (this.toolMode === 'scale') this.drawScaleGizmo(s, this.bounds);
-    else this.drawMoveGizmo(s, this.bounds);
+    // Graphics objects have no rotation or scale in PHASEFORM.
+    const transformable = this.typeById.get(this.selectedId!) !== 'graphics';
+    if (this.toolMode === 'rotate' && transformable) this.drawRotateGizmo(o, w, this.bounds);
+    else if (this.toolMode === 'scale' && transformable) this.drawScaleGizmo(w, this.bounds);
+    else this.drawMoveGizmo(w, this.bounds);
   }
 
   private onMessage(data: unknown) {
@@ -190,47 +280,18 @@ class EditorScene extends Phaser.Scene {
     switch (m.type) {
       case 'SET_TOOL_MODE': this.toolMode = m.mode; break;
       case 'SET_SNAP': this.snapOn = m.enabled; break;
-      case 'SET_LOCKED_IDS': this.lockedIds = new Set(m.ids); break;
+      case 'SET_LOCKED_IDS': this.lockedIds = new Set(m.ids); this.applyLocks(); break;
       case 'RESET_CAMERA': this.cameras.main.setScroll(0, 0).setZoom(1); break;
-      case 'DESELECT_ALL': this.deselect(); break;
+      // Editor-initiated selection changes are not echoed back; the editor already knows.
+      case 'DESELECT_ALL': this.selectedId = null; break;
+      case 'SELECT_OBJECT': this.selectedId = m.id; break;
 
-      case 'RESET_SCENE':
-        this.clearScene();
-        post({ type: 'SCENE_READY' });
+      case 'SET_OBJECT':
+        if (this.queued) this.queued.push(m);
+        else this.applyLive(m.id, m.patch);
         break;
 
-      case 'SELECT_OBJECT': {
-        const s = this.sprites.get(m.id);
-        if (s) this.selectSprite(m.id, s);
-        break;
-      }
-
-      case 'SET_PROPERTIES': {
-        const s = this.sprites.get(m.id);
-        if (s) this.applyProps(m.id, s, m);
-        break;
-      }
-
-      case 'DELETE_OBJECT': {
-        const s = this.sprites.get(m.id);
-        if (!s) break;
-        if (this.selectedSprite === s) this.deselect();
-        s.destroy();
-        this.sprites.delete(m.id);
-        this.anchors.delete(m.id);
-        break;
-      }
-
-      case 'LOAD_SCENE': {
-        const selected = this.selectedId;
-        this.clearScene();
-        for (const obj of m.objects) this.createObject(obj, obj.id === selected);
-        break;
-      }
-
-      case 'ADD_OBJECT':
-        this.createObject(m.object, m.select);
-        break;
+      case 'LOAD_SCENE': this.loadScene(m); break;
 
       // screenX/screenY are iframe pixels; the editor decides what to add at the scene position.
       case 'LOCATE_DROP': {
@@ -243,108 +304,281 @@ class EditorScene extends Phaser.Scene {
     }
   }
 
-  private createObject(obj: LoadSceneObject, select: boolean) {
-    const make = (texture?: string) => {
-      let spr: Sprite | undefined;
-      try {
-        spr = buildPhaseform(this, { objects: [toPhaseform(obj, texture)] }).byId.get(obj.id) as Sprite | undefined;
-      } catch (e) {
-        console.error(`PHASEFORM loader failed for "${obj.name}"`, e);
-      }
-      if (!spr) return;
-      this.anchors.set(obj.id, obj.anchor);
-      this.applyProps(obj.id, spr, obj);
-      spr.setInteractive({ draggable: true });
-      this.sprites.set(obj.id, spr);
-      if (select) this.selectSprite(obj.id, spr);
+  // ---- Loading
+
+  private loadScene(m: Extract<EditorToViewport, { type: 'LOAD_SCENE' }>) {
+    const token = ++this.loadToken;
+    this.destroyBuilt();
+    this.selectedId = m.selectedId;
+    const size = { width: num(m.scene.size?.width, 1280), height: num(m.scene.size?.height, 720) };
+    if (size.width !== this.sceneSize.width || size.height !== this.sceneSize.height) {
+      this.sceneSize = size;
+      this.scale.setGameSize(size.width, size.height);
+    }
+    this.drawFrame(size, m.scene.background);
+
+    let texturesChanged = false;
+    for (const a of m.assets) texturesChanged = this.addTexture(a) || texturesChanged;
+    this.syncAnimations(m.animations, texturesChanged);
+
+    const finish = (texWarnings: (string | null)[]) => {
+      if (token !== this.loadToken) return;
+      const warnings = texWarnings.filter((w): w is string => !!w);
+      this.buildScene(m.scene, m.animations, warnings);
+      const queued = this.queued ?? [];
+      this.queued = null;
+      for (const q of queued) this.applyLive(q.id, q.patch);
+      post({ type: 'SCENE_LOADED', warnings });
     };
-    if (obj.kind === 'primitive') make();
-    else this.withAssetTexture(obj.asset, obj.dataUrl, make);
+    // Synchronous unless a texture is still decoding, so a rebuild with no new assets is cheap and flicker-free.
+    if (this.texPending.size === 0) { finish([]); return; }
+    this.queued ??= [];
+    void Promise.all([...this.texPending.values()]).then(finish);
   }
 
-  private clearScene() {
-    this.deselect();
-    for (const spr of this.sprites.values()) spr.destroy();
-    this.sprites.clear();
-    this.anchors.clear();
-  }
-
-  /** Runs `cb` once the asset texture exists, loading it from `dataUrl` or falling back to a placeholder. */
-  private withAssetTexture(assetName: string, dataUrl: string | undefined, cb: (key: string) => void) {
-    const key = `asset_${assetName}`;
-    if (this.textures.exists(key)) return cb(key);
-    if (dataUrl) {
-      this.textures.once(`addtexture-${key}`, () => cb(key));
-      this.textures.addBase64(key, dataUrl);
-      return;
-    }
-    const g = this.add.graphics().fillStyle(0x6366f1, 1).fillRect(0, 0, 64, 64).lineStyle(1, 0xa5b4fc, 0.5).strokeRect(2, 2, 60, 60);
-    g.generateTexture(key, 64, 64);
-    g.destroy();
-    cb(key);
-  }
-
-  /** Reads every table property from the sprite (descriptor `get`, else `sprite[key]`). */
-  private serialize(id: string, spr: Sprite): ObjectProps {
-    const out: Partial<Record<keyof ObjectProps, unknown>> = {};
-    for (const k of PROP_KEYS) {
-      const d = describe(k);
-      out[k] = d.get ? d.get(spr) : (spr as unknown as Record<string, unknown>)[k];
-    }
-    return { ...(out as ObjectProps), ...this.offsetOf(id, spr) };
-  }
-
-  /** The sprite's x/y as the offset stored in the scene (from its anchor point). */
-  private offsetOf(id: string, s: Sprite) {
-    return toOffset(this.anchors.get(id) ?? null, s, CANVAS);
-  }
-
-  /** Applies only the props present in `p` (descriptor `set`, else assigns `sprite[key]`). x/y are anchor offsets; `anchor` re-pins. */
-  private applyProps(id: string, s: Sprite, p: Partial<ObjectProps> & { anchor?: Anchor | null }) {
-    if (p.x !== undefined || p.y !== undefined || p.anchor !== undefined) {
-      const cur = this.offsetOf(id, s);
-      if (p.anchor !== undefined) this.anchors.set(id, p.anchor);
-      const abs = resolveAnchor(this.anchors.get(id) ?? null, { x: p.x ?? cur.x, y: p.y ?? cur.y }, CANVAS);
-      s.setPosition(abs.x, abs.y);
-    }
-    for (const k of PROP_KEYS) {
-      if (k === 'x' || k === 'y') continue;
-      const v = p[k];
-      if (v === undefined) continue;
-      if (k === 'tint' && !('setTint' in s)) {
-        // loader-built shapes have no tint; their fill colour plays that role
-        (s as unknown as Phaser.GameObjects.Shape).setFillStyle(parseInt(String(v).replace('#', ''), 16));
-        continue;
+  /** Adds or replaces one texture; returns false when the same asset is already there. */
+  private addTexture(a: ViewAsset): boolean {
+    const sig = JSON.stringify(a);
+    if (this.texSig.get(a.key) === sig && (this.textures.exists(a.key) || this.texPending.has(a.key))) return false;
+    this.texSig.set(a.key, sig);
+    if (this.textures.exists(a.key)) this.textures.remove(a.key);
+    const key = a.key;
+    const done = new Promise<string | null>(resolve => {
+      if (a.type === 'image') {
+        const onAdd = () => { this.textures.off(Phaser.Textures.Events.ERROR, onErr); resolve(null); };
+        const onErr = (k: string) => {
+          if (k !== key) return;
+          this.textures.off(Phaser.Textures.Events.ADD_KEY + key, onAdd);
+          this.textures.off(Phaser.Textures.Events.ERROR, onErr);
+          resolve(`texture "${key}" could not be decoded`);
+        };
+        this.textures.once(Phaser.Textures.Events.ADD_KEY + key, onAdd);
+        this.textures.on(Phaser.Textures.Events.ERROR, onErr);
+        this.textures.addBase64(key, a.dataUrl);
+        return;
       }
-      const d = describe(k);
-      if (d.set) d.set(s, v);
-      else (s as unknown as Record<string, unknown>)[k] = v;
+      if (!a.frameWidth || !a.frameHeight) { resolve(`spritesheet "${key}" has no frameWidth/frameHeight`); return; }
+      const img = new Image();
+      img.onload = () => {
+        if (this.texSig.get(key) !== sig) { resolve(null); return; } // replaced again while decoding
+        if (this.textures.exists(key)) this.textures.remove(key);
+        const tex = this.textures.addSpriteSheet(key, img, {
+          frameWidth: a.frameWidth!, frameHeight: a.frameHeight!,
+          margin: a.margin ?? 0, spacing: a.spacing ?? 0, startFrame: a.startFrame ?? 0, endFrame: a.endFrame ?? -1,
+        });
+        resolve(tex ? null : `spritesheet "${key}" could not be added`);
+      };
+      img.onerror = () => resolve(`spritesheet "${key}" could not be decoded`);
+      img.src = a.dataUrl;
+    });
+    this.texPending.set(key, done);
+    void done.then(() => { if (this.texPending.get(key) === done) this.texPending.delete(key); });
+    return true;
+  }
+
+  /** Drops animations that changed, vanished, or may point at a replaced texture; the loader recreates them. */
+  private syncAnimations(animations: unknown[], texturesChanged: boolean) {
+    const next = new Map<string, string>();
+    for (const a of animations) {
+      const key = (a as { key?: unknown } | null)?.key;
+      if (typeof key === 'string') next.set(key, JSON.stringify(a));
+    }
+    for (const [key, sig] of this.animSig) {
+      if (texturesChanged || next.get(key) !== sig) this.anims.remove(key);
+    }
+    for (const [key, sig] of next) {
+      if (texturesChanged || this.animSig.get(key) !== sig) this.anims.remove(key);
+    }
+    this.animSig = next;
+  }
+
+  private destroyBuilt() {
+    for (const o of this.roots) o.destroy();
+    this.roots = [];
+    this.objById.clear();
+    this.idByObj.clear();
+    this.typeById.clear();
+    this.bodyDrag = null;
+  }
+
+  /** Destroys whatever a failed build call left on the display list. */
+  private cleanupSince(before: Set<GO>) {
+    for (const o of this.children.list.slice()) if (!before.has(o)) o.destroy();
+  }
+
+  private buildScene(scene: PfScene, animations: unknown[], warnings: string[]) {
+    const objects = Array.isArray(scene.objects) ? scene.objects : [];
+    for (const { obj } of walk(objects)) this.typeById.set(obj.id, obj.type);
+    const keep = (w: string) => !/: script ".*" not provided$/.test(w);
+
+    // Whole document first, so references between objects (masks, light sources) resolve; per object if that throws.
+    // The background is left out: the loader would set it on the camera, flooding the editor around the canvas.
+    let before = new Set(this.children.list);
+    try {
+      const r = buildPhaseform(this, { objects }, { animations });
+      this.roots = r.objects;
+      this.register(r.byId);
+      warnings.push(...r.warnings.filter(keep));
+      return;
+    } catch {
+      this.cleanupSince(before);
+    }
+
+    const seen = new Set<string>();
+    for (const obj of objects) {
+      if (seen.has(obj.id)) { warnings.push(`${obj.id}: duplicate id, skipped`); continue; }
+      const ids = subtreeIds(obj);
+      before = new Set(this.children.list);
+      try {
+        const dup = ids.find(i => seen.has(i));
+        if (dup) throw new Error(`duplicate id "${dup}"`);
+        const r = buildPhaseform(this, { objects: [obj] }, { animations });
+        this.roots.push(...r.objects);
+        this.register(r.byId);
+        warnings.push(...r.warnings.filter(keep));
+      } catch (e) {
+        this.cleanupSince(before);
+        for (const i of ids) if (!seen.has(i)) this.typeById.delete(i);
+        warnings.push(`${obj.id}: not built (${errText(e)}), shown as a placeholder`);
+        const ph = this.placeholder(obj);
+        this.roots.push(ph);
+        this.typeById.set(obj.id, 'rectangle');
+        this.register(new Map([[obj.id, ph]]));
+      }
+      for (const i of ids) seen.add(i);
     }
   }
 
-  private drawCanvasFrame() {
-    this.add.graphics().setDepth(-2)
-      .fillStyle(0x1e1e1e, 1)
-      .fillRect(-4000, -4000, 8000 + CANVAS_W, 8000 + CANVAS_H);
-    this.add.graphics().setDepth(-1)
-      .fillStyle(0x2b2b2b, 1)
-      .fillRect(0, 0, CANVAS_W, CANVAS_H);
+  private placeholder(obj: PfObject): GO {
+    const w = num(obj.width, 0) > 0 ? num(obj.width, 0) : PLACEHOLDER_SZ;
+    const h = num(obj.height, 0) > 0 ? num(obj.height, 0) : PLACEHOLDER_SZ;
+    const ph = this.add.rectangle(num(obj.x, 0), num(obj.y, 0), w, h, 0xff0000, 0.12).setStrokeStyle(2, 0xff3333, 1);
+    if (typeof obj.depth === 'number') ph.setDepth(obj.depth);
+    ph.name = obj.id;
+    return ph;
+  }
 
-    const border = this.add.graphics().setDepth(0);
-    border.lineStyle(1, 0x444444, 1).strokeRect(0, 0, CANVAS_W, CANVAS_H);
+  /** Records built objects and makes every leaf (not containers, not graphics) pickable and draggable. */
+  private register(byId: Map<string, GO>) {
+    for (const [id, go] of byId) {
+      this.objById.set(id, go);
+      this.idByObj.set(go, id);
+      if (!(go instanceof Phaser.GameObjects.Container) && !(go instanceof Phaser.GameObjects.Graphics)) {
+        go.setInteractive({ draggable: true });
+      }
+    }
+    this.applyLocks();
+  }
+
+  /** Locked objects (or children of locked containers) take no input, so clicks fall through to what is below. */
+  private applyLocks() {
+    for (const [id, go] of this.objById) if (go.input) go.input.enabled = !this.isLocked(id);
+  }
+
+  private isLocked(id: string): boolean {
+    if (this.lockedIds.has(id)) return true;
+    let p = this.objById.get(id)?.parentContainer ?? null;
+    while (p) {
+      const pid = this.idByObj.get(p);
+      if (pid && this.lockedIds.has(pid)) return true;
+      p = p.parentContainer;
+    }
+    return false;
+  }
+
+  // ---- Live edits
+
+  /** Applies LIVE_FIELDS in place; `undefined` resets to the PHASEFORM default; fields the type lacks are ignored. */
+  private applyLive(id: string, patch: Partial<Record<LiveField, unknown>>) {
+    const go = this.objById.get(id);
+    if (!go) return;
+    const o = live(go);
+    const type = this.typeById.get(id) ?? '';
+    const isGraphics = type === 'graphics';
+    for (const [k, v] of Object.entries(patch) as [LiveField, unknown][]) {
+      switch (k) {
+        case 'x': o.x = num(v, 0); break;
+        case 'y': o.y = num(v, 0); break;
+        case 'rotation': if (!isGraphics) o.rotation = num(v, 0); break;
+        case 'scale': if (!isGraphics) { const s = vec(v, { x: 1, y: 1 }); o.setScale(s.x, s.y); } break;
+        case 'origin':
+          if (!NO_ORIGIN.has(type) && o.setOrigin) {
+            const d = ORIGIN_ZERO.has(type) ? 0 : 0.5;
+            const s = vec(v, { x: d, y: d });
+            o.setOrigin(s.x, s.y);
+          }
+          break;
+        case 'alpha': o.setAlpha(num(v, 1)); break;
+        case 'visible': o.setVisible(v === undefined ? true : !!v); break;
+        case 'depth': if (!o.parentContainer) o.setDepth(num(v, 0)); break;
+        case 'flipX': if (FLIPPABLE.has(type) && o.setFlipX) o.setFlipX(!!v); break;
+        case 'flipY': if (FLIPPABLE.has(type) && o.setFlipY) o.setFlipY(!!v); break;
+        default: unhandled(k);
+      }
+    }
+  }
+
+  // ---- Transforms
+
+  private selected(): Live | null {
+    if (!this.selectedId) return null;
+    const go = this.objById.get(this.selectedId);
+    return go && go.active ? live(go) : null;
+  }
+
+  private worldPos(o: Live): Vec2 {
+    const m = o.getWorldTransformMatrix(this.mA, this.mB);
+    return { x: m.tx, y: m.ty };
+  }
+
+  private worldRotation(o: GO): number {
+    let r = 0;
+    for (let p: GO | null = o; p; p = p.parentContainer) r += live(p).rotation;
+    return r;
+  }
+
+  /** Puts `o` at a world position, converted into its parent's space, and reports the local values. */
+  private moveTo(o: Live, id: string, wx: number, wy: number) {
+    let x = wx, y = wy;
+    const parent = o.parentContainer;
+    if (parent) {
+      const v = live(parent).getWorldTransformMatrix(this.mA, this.mB).applyInverse(wx, wy);
+      x = v.x; y = v.y;
+    }
+    o.x = round(x, 2);
+    o.y = round(y, 2);
+    post({ type: 'OBJECT_TRANSFORMED', id, x: o.x, y: o.y });
+  }
+
+  private snap(v: number) {
+    return this.snapOn ? Math.round(v / GRID) * GRID : v;
+  }
+
+  // ---- Drawing
+
+  /** The area around the canvas, the canvas in the scene's background colour, its grid and its border. */
+  private drawFrame(size: { width: number; height: number }, background: string | undefined) {
+    const W = size.width, H = size.height;
+    this.outsideGfx.clear().fillStyle(0x1e1e1e, 1).fillRect(-4000, -4000, 8000 + W, 8000 + H);
+    const bg = cssColor(background, '#000000');
+    this.canvasGfx.clear().fillStyle(bg.color, bg.alpha).fillRect(0, 0, W, H);
+
+    const grid = this.gridGfx.clear().lineStyle(1, 0xffffff, 0.04);
+    for (let x = 0; x <= W; x += GRID) grid.lineBetween(x, 0, x, H);
+    for (let y = 0; y <= H; y += GRID) grid.lineBetween(0, y, W, y);
+    grid.lineStyle(1, 0xffffff, 0.1)
+      .lineBetween(W / 2, 0, W / 2, H)
+      .lineBetween(0, H / 2, W, H / 2);
+
+    // Drawn above the scene so the canvas edge stays visible when objects cover it.
+    const border = this.borderGfx.clear();
+    border.lineStyle(1, 0x444444, 1).strokeRect(0, 0, W, H);
     border.lineStyle(2, 0x5a5a5a, 1);
     const tick = 16;
-    for (const [cx, cy] of [[0, 0], [CANVAS_W, 0], [0, CANVAS_H], [CANVAS_W, CANVAS_H]]) {
+    for (const [cx, cy] of [[0, 0], [W, 0], [0, H], [W, H]]) {
       border.lineBetween(cx, cy, cx + (cx === 0 ? tick : -tick), cy);
       border.lineBetween(cx, cy, cx, cy + (cy === 0 ? tick : -tick));
     }
-
-    const grid = this.add.graphics().setDepth(0).lineStyle(1, 0xffffff, 0.04);
-    for (let x = 0; x <= CANVAS_W; x += GRID) grid.lineBetween(x, 0, x, CANVAS_H);
-    for (let y = 0; y <= CANVAS_H; y += GRID) grid.lineBetween(0, y, CANVAS_W, y);
-    grid.lineStyle(1, 0xffffff, 0.1)
-      .lineBetween(CANVAS_W / 2, 0, CANVAS_W / 2, CANVAS_H)
-      .lineBetween(0, CANVAS_H / 2, CANVAS_W, CANVAS_H / 2);
   }
 
   private drawSelection(b: Phaser.Geom.Rectangle) {
@@ -364,8 +598,7 @@ class EditorScene extends Phaser.Scene {
     this.gizmoGfx.lineStyle(1.5, 0x888888, 1).strokeRect(x - 6, y - 6, 12, 12);
   }
 
-  private drawMoveGizmo(s: Sprite, b: Phaser.Geom.Rectangle) {
-    const { x, y } = s;
+  private drawMoveGizmo({ x, y }: Vec2, b: Phaser.Geom.Rectangle) {
     const tipX = b.right + ARROW_LEN;
     const tipY = b.top - ARROW_LEN;
     this.gizmoGfx.lineStyle(3, 0xff4444, 1).lineBetween(b.right, y, tipX, y);
@@ -377,10 +610,9 @@ class EditorScene extends Phaser.Scene {
     this.hY.setPosition(x, tipY - 5).setVisible(true);
   }
 
-  private drawRotateGizmo(s: Sprite, b: Phaser.Geom.Rectangle) {
-    const { x, y } = s;
+  private drawRotateGizmo(o: Live, { x, y }: Vec2, b: Phaser.Geom.Rectangle) {
     const r = ROT_RADIUS + Math.max(b.width, b.height) / 2;
-    const ang = s.rotation - Math.PI / 2;
+    const ang = this.worldRotation(o) - Math.PI / 2;
     const hx = x + Math.cos(ang) * r;
     const hy = y + Math.sin(ang) * r;
     this.gizmoGfx.lineStyle(2, 0xfbbf24, 0.8).strokeCircle(x, y, r);
@@ -391,8 +623,7 @@ class EditorScene extends Phaser.Scene {
     this.hRot.setPosition(hx, hy).setVisible(true);
   }
 
-  private drawScaleGizmo(s: Sprite, b: Phaser.Geom.Rectangle) {
-    const { x, y } = s;
+  private drawScaleGizmo({ x, y }: Vec2, b: Phaser.Geom.Rectangle) {
     const tipX = b.right + ARROW_LEN;
     const tipY = b.top - ARROW_LEN;
     this.gizmoGfx.lineStyle(3, 0xf97316, 1).lineBetween(b.right, y, tipX, y);
@@ -404,43 +635,16 @@ class EditorScene extends Phaser.Scene {
     this.hSY.setPosition(x, tipY).setVisible(true);
   }
 
-  private snap(v: number) {
-    return this.snapOn ? Math.round(v / GRID) * GRID : v;
-  }
-
   private hideHandles() {
     for (const h of [this.hX, this.hY, this.hRot, this.hSX, this.hSY]) h.setVisible(false);
-  }
-
-  private idOf(spr: Sprite): string | null {
-    for (const [id, s] of this.sprites) if (s === spr) return id;
-    return null;
-  }
-
-  private selectSprite(id: string, spr: Sprite) {
-    this.selectedSprite = spr;
-    this.selectedId = id;
-    post({ type: 'OBJECT_SELECTED', id, ...this.serialize(id, spr), texW: spr.width, texH: spr.height });
-  }
-
-  private deselect() {
-    this.selectedSprite = null;
-    this.selectedId = null;
-    post({ type: 'OBJECT_DESELECTED' });
-  }
-
-  private notifyTransform() {
-    const s = this.selectedSprite;
-    if (!s || !this.selectedId) return;
-    post({ type: 'OBJECT_TRANSFORMED', id: this.selectedId, ...this.offsetOf(this.selectedId, s), rotation: s.rotation, scaleX: s.scaleX, scaleY: s.scaleY });
   }
 }
 
 const game = new Phaser.Game({
   type: Phaser.WEBGL,
   parent: 'game-container',
-  width: CANVAS_W,
-  height: CANVAS_H,
+  width: 1280,
+  height: 720,
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,

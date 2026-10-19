@@ -1,23 +1,24 @@
 import { useEffect, useRef, useState } from 'react';
 import type React from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { useEditorStore, ObjectProps } from '../store';
-import type { ObjectItem } from '../components/ObjectsPanel';
-import type { EngineId } from '../../../shared/props';
-import { PROP_DEFAULTS, PROP_KEYS, pickProps, readWireProps } from '../../../shared/props';
-import { DEFAULT_SCENE } from '../../../shared/layout';
-import { formatScene, parseScene, newId, uniqueName, toIdentifier } from '../../../shared/scene';
+import { useEditorStore } from '../store';
 import {
   isMessage, isForge, unhandled,
-  type ToolMode, type SceneObject, type EditorToViewport, type BridgeToEditor, type Shape, type AssetPayload,
+  type ToolMode, type EditorToViewport, type BridgeToEditor, type AssetPayload,
 } from '../../../shared/protocol';
+import type { PfObject, PfProject, PfScene, Problem } from '../../../shared/phaseform/types';
+import { PROJECT_FILE, formatJson, isSceneKey, newProject, scenePathFor } from '../../../shared/phaseform/format';
+import { allIds, cloneWithNewIds, findById, uniqueId } from '../../../shared/phaseform/tree';
+import { checkSceneAgainstProject, validateProject, validateScene } from '../../../shared/phaseform/validate';
+import { ADD_LABELS, createImage, createObject, type AddKind } from '../newObjects';
 import * as history from '../history';
 import * as model from '../sceneModel';
-import { useSceneModel } from '../sceneModel';
+import { allProblems, useSceneModel } from '../sceneModel';
 import { useLatest } from './useLatest';
 
 type ShortcutKey = Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey' | 'shiftKey'>;
 export type SaveStatus = 'saved' | 'unsaved' | 'saving';
+export type BeginResult = 'ready' | 'needs-setup';
 
 const api = window.electronAPI;
 
@@ -28,20 +29,21 @@ export const TOOLS: { mode: ToolMode; icon: string; label: string; key: string }
   { mode: 'scale', icon: '⤢', label: 'Scale (R)', key: 'r' },
 ];
 
-const SHAPE_NAMES: Record<Shape, string> = { rect: 'Rectangle', circle: 'Circle', triangle: 'Triangle' };
-
 const isTyping = (t: EventTarget | null) =>
   t instanceof HTMLInputElement || t instanceof HTMLSelectElement || t instanceof HTMLTextAreaElement;
+
+const err = (message: string): Problem => ({ level: 'error', message });
+const baseName = (p: string) => p.split(/[\\/]/).pop() ?? p;
+
+type Parsed<T> = { ok: true; value: T } | { ok: false; error: string };
+function parseJson<T>(text: string): Parsed<T> {
+  try { return { ok: true, value: JSON.parse(text) as T }; } catch (e) { return { ok: false, error: (e as Error).message }; }
+}
 
 interface Options {
   iframeRef: React.RefObject<HTMLIFrameElement | null>;
   send: (msg: EditorToViewport) => void;
   projectFolder: string | null;
-  devScript: string;
-  canvasSize: { w: number; h: number };
-  /** The project's engine profile: decides the scene file's extension namespace. */
-  engine: EngineId;
-  ensureConfigPersisted: (folder: string, devScript: string) => Promise<IpcResult>;
   appendLog: (text: string) => void;
   showConsole: () => void;
   /** True while the viewport shows something other than the editable scene (live mode): shortcuts and saving are off. */
@@ -50,258 +52,283 @@ interface Options {
   onForgeMessage: (m: BridgeToEditor) => void;
 }
 
-/** The scene being edited: tool, save state, undo/redo, and the viewport message protocol. The objects live in sceneModel. */
-export function useScene({
-  iframeRef, send, projectFolder, devScript, canvasSize, engine, ensureConfigPersisted, appendLog, showConsole, readOnly, onForgeMessage,
-}: Options) {
+/** The scene being edited: tool, save state, undo/redo, and the viewport message protocol. The documents live in sceneModel. */
+export function useScene({ iframeRef, send, projectFolder, appendLog, showConsole, readOnly, onForgeMessage }: Options) {
   const [toolMode, setToolMode] = useState<ToolMode>('select');
   const [saving, setSaving] = useState(false);
-  const [lockedIds, setLockedIds] = useState<string[]>([]);
-  /** The scene being edited (its key is the file name and the game's Phaser scene key) and the scenes the project offers. */
-  const [sceneKey, setSceneKey] = useState(DEFAULT_SCENE);
-  const keyRef = useRef(DEFAULT_SCENE);
-  const [scenes, setScenes] = useState<SceneEntry[]>([]);
+  const [lockedIds, setLockedIds] = useState<ReadonlySet<string>>(new Set());
+  const [sceneKey, setSceneKey] = useState('Main');
+  const keyRef = useRef('Main');
+  /** Line endings of the files as read, so saving an unchanged document reproduces it byte for byte. */
+  const eolRef = useRef({ scene: '\n', project: '\n' });
 
   model.bindView(send, projectFolder);
-  const { objects, rev, savedRev, problems, blocked, sceneStatus } = useSceneModel(useShallow(s => ({
-    objects: s.doc.objects, rev: s.rev, savedRev: s.savedRev, problems: s.problems, blocked: s.blocked, sceneStatus: s.status,
+  const { scene, project, rev, savedRev, projectRev, projectSavedRev, blocked, sceneStatus, scenePath } = useSceneModel(useShallow(s => ({
+    scene: s.scene, project: s.project, rev: s.rev, savedRev: s.savedRev, projectRev: s.projectRev, projectSavedRev: s.projectSavedRev,
+    blocked: s.blocked, sceneStatus: s.status, scenePath: s.scenePath,
   })));
-  const saveStatus: SaveStatus = saving ? 'saving' : rev !== savedRev ? 'unsaved' : 'saved';
-  const objectItems: ObjectItem[] = objects.map(o => ({
-    id: o.id, name: o.name, type: o.kind === 'sprite' ? 'Sprite' : SHAPE_NAMES[o.shape],
-    visible: o.visible, locked: lockedIds.includes(o.id),
-  }));
+  const problems = useSceneModel(useShallow(allProblems));
+  const dirty = rev !== savedRev || projectRev !== projectSavedRev;
+  const saveStatus: SaveStatus = saving ? 'saving' : dirty ? 'unsaved' : 'saved';
+  const scenes = project?.scenes ?? [];
+  const canvasSize = { w: scene.size.width, h: scene.size.height };
 
-  useEffect(() => { send({ type: 'SET_LOCKED_IDS', ids: lockedIds }); }, [lockedIds, send]);
+  useEffect(() => { send({ type: 'SET_LOCKED_IDS', ids: [...lockedIds] }); }, [lockedIds, send]);
 
-  const setTool = (mode: ToolMode) => {
-    setToolMode(mode);
-    send({ type: 'SET_TOOL_MODE', mode });
-  };
+  const setTool = (mode: ToolMode) => { setToolMode(mode); send({ type: 'SET_TOOL_MODE', mode }); };
 
   const toggleSnap = () => {
     send({ type: 'SET_SNAP', enabled: !useEditorStore.getState().snapEnabled });
     useEditorStore.getState().toggleSnap();
   };
 
-  /** Applies props to the model and the viewport, and to the inspector when the object is selected. */
-  const applyProps = (id: string, props: Partial<ObjectProps>) => {
-    model.setProps(id, props);
-    if (id === useEditorStore.getState().selectedId) useEditorStore.getState().updateProperties(props);
-  };
+  const select = (id: string | null) => useEditorStore.getState().setSelected(id);
+  const selectObject = (id: string) => { select(id); send({ type: 'SELECT_OBJECT', id }); };
 
-  /** Edits made one after another on one object (a drag, typing in a field) become a single undo step. */
-  const gestureRef = useRef<{ id: string; before: ObjectProps } | null>(null);
-  const beginGesture = (id: string) => {
-    if (gestureRef.current?.id === id) return;
-    commitEdit();
-    const o = model.objectById(id);
-    if (o) gestureRef.current = { id, before: pickProps(o) };
-  };
+  // ---- Undo: edits made one after another (a drag, typing in a field) become one step, as snapshots of both documents.
+  const gestureRef = useRef<model.Snapshot | null>(null);
+  const beginGesture = () => { if (!gestureRef.current) gestureRef.current = model.snapshot(); };
   const commitEdit = () => {
-    const g = gestureRef.current;
+    const before = gestureRef.current;
     gestureRef.current = null;
-    const o = g && model.objectById(g.id);
-    if (!g || !o) return;
-    const after = pickProps(o);
-    if (PROP_KEYS.every(k => after[k] === g.before[k])) return;
-    history.push({ undo: () => applyProps(g.id, g.before), redo: () => applyProps(g.id, after) });
+    if (!before) return;
+    const after = model.snapshot();
+    if (before.scene === after.scene && before.project === after.project) return;
+    history.push({ undo: () => model.restore(before), redo: () => model.restore(after) });
   };
+  /** One discrete change as its own undo step. */
+  const step = <T,>(fn: () => T): T => { commitEdit(); beginGesture(); const r = fn(); commitEdit(); return r; };
 
   const undo = () => { commitEdit(); history.undo(); };
   const redo = () => { commitEdit(); history.redo(); };
 
-  const updateField = (props: Partial<ObjectProps>, commit = false) => {
+  /** After undo/redo or a delete the selected object may be gone. */
+  useEffect(() => {
+    const id = useEditorStore.getState().selectedId;
+    if (id && !findById(scene, id)) select(null);
+  }, [scene]);
+
+  // ---- Editing the selected object
+  const updateField = (patch: Record<string, unknown>, commit = false) => {
     const id = useEditorStore.getState().selectedId;
     if (!id) return;
-    beginGesture(id);
-    applyProps(id, props);
+    beginGesture();
+    model.update(id, patch);
     if (commit) commitEdit();
   };
 
-  const selectObject = (id: string) => send({ type: 'SELECT_OBJECT', id });
+  const nextId = (base: string) => uniqueId(base, allIds(model.useSceneModel.getState().scene));
 
-  const addObject = (obj: SceneObject) => {
-    commitEdit();
-    const index = model.insertObject(obj);
-    history.push({ undo: () => { model.removeObject(obj.id); }, redo: () => { model.insertObject(obj, index); } });
+  /** Adds into `parentId` (null = top level); a top-level object lands at the canvas centre, a child at its parent's origin. */
+  const addObject = (kind: AddKind, parentId: string | null = null) => {
+    const sc = useSceneModel.getState().scene;
+    const at = parentId ? { x: 0, y: 0 } : { x: Math.round(sc.size.width / 2), y: Math.round(sc.size.height / 2) };
+    const obj = createObject(kind, nextId(ADD_LABELS[kind]), at.x, at.y);
+    step(() => model.insert(obj, parentId));
+    selectObject(obj.id);
   };
 
-  const deleteObject = (id: string) => {
-    commitEdit();
-    const removed = model.removeObject(id);
-    if (!removed) return;
-    history.push({
-      undo: () => { model.insertObject(removed.obj, removed.index); },
-      redo: () => { model.removeObject(id); },
+  /** Adds an image object for a file inside the project, registering it in the manifest first when it is new. */
+  const addImageFile = (file: AssetPayload, at?: { x: number; y: number }) => {
+    const url = file.fullPath ? model.relativePath(file.fullPath) : null;
+    const state = useSceneModel.getState();
+    if (!url || !state.project) {
+      return appendLog(`\n[Cannot add "${file.name}": it is outside the project folder.]\n`);
+    }
+    const sc = state.scene;
+    step(() => {
+      let asset = state.project!.assets.find(a => a.url === url && (a.type === 'image' || a.type === 'spritesheet'));
+      if (!asset) {
+        const keys = new Set(state.project!.assets.map(a => a.key));
+        const key = (() => { const b = file.name.replace(/\.[^.]+$/, '').replace(/[^\w-]+/g, '_') || 'image'; if (!keys.has(b)) return b; for (let i = 2; ; i++) if (!keys.has(`${b}_${i}`)) return `${b}_${i}`; })();
+        asset = { key: key, type: 'image', url };
+        model.addAsset(asset);
+      }
+      const obj = createImage(nextId(asset.key), asset.key, Math.round(at?.x ?? sc.size.width / 2), Math.round(at?.y ?? sc.size.height / 2));
+      model.insert(obj, null);
+      select(obj.id);
     });
-  };
-
-  const duplicateObject = (id: string) => {
-    const src = model.objectById(id);
-    if (!src) return;
-    addObject({ ...src, id: newId(), name: uniqueName(`${src.name}Copy`, objects.map(o => o.name)), depth: objects.length, x: src.x + 20, y: src.y + 20 });
-  };
-
-  const renameObject = (id: string, name: string) => {
-    const before = model.objectById(id)?.name;
-    const after = uniqueName(toIdentifier(name), objects.filter(o => o.id !== id).map(o => o.name));
-    if (before === undefined || before === after) return;
-    commitEdit();
-    model.setName(id, after);
-    history.push({ undo: () => model.setName(id, before), redo: () => model.setName(id, after) });
-  };
-
-  const toggleVisible = (id: string) => {
-    const o = model.objectById(id);
-    if (!o) return;
-    commitEdit();
-    beginGesture(id);
-    applyProps(id, { visible: !o.visible });
-    commitEdit();
-  };
-
-  /** Drag-reorder: `toIndex` is the new position in the scene order (depth). */
-  const reorderObject = (id: string, toIndex: number) => {
-    commitEdit();
-    const before = model.reorderObject(id, toIndex);
-    if (!before) return;
-    const after = useSceneModel.getState().doc.objects;
-    history.push({ undo: () => model.setOrder(before), redo: () => model.setOrder(after) });
-    const sel = useEditorStore.getState().selectedId;
-    const o = sel && model.objectById(sel);
-    if (o) useEditorStore.getState().updateProperties({ depth: o.depth });
-  };
-
-  const updateMeta = (meta: Parameters<typeof model.setMeta>[1]) => {
     const id = useEditorStore.getState().selectedId;
-    const o = id && model.objectById(id);
-    if (!id || !o) return;
-    commitEdit();
-    const before = { anchor: o.anchor, interactive: o.interactive };
-    model.setMeta(id, meta);
-    history.push({ undo: () => model.setMeta(id, before), redo: () => model.setMeta(id, meta) });
-  };
-
-  const toggleLocked = (id: string) =>
-    setLockedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
-
-  const addPrimitive = (shape: Shape) => {
-    addObject({
-      id: newId(), name: uniqueName(SHAPE_NAMES[shape], objects.map(o => o.name)), anchor: null, interactive: false, kind: 'primitive', shape,
-      ...PROP_DEFAULTS, depth: objects.length, x: canvasSize.w / 2, y: canvasSize.h / 2,
-    });
-  };
-
-  const addSprite = (file: AssetPayload, at?: { x: number; y: number }) => {
-    const asset = file.fullPath ? model.relativeAsset(file.fullPath) : null;
-    if (!asset) return appendLog(`
-[Cannot add "${file.name}": it is outside the project folder.]
-`);
-    model.primeTexture(asset, file.dataUrl);
-    addObject({
-      id: newId(), name: uniqueName(toIdentifier(file.name.replace(/.[^.]+$/, '')), objects.map(o => o.name)), anchor: null, interactive: false,
-      kind: 'sprite', asset, ...PROP_DEFAULTS, depth: objects.length, x: at?.x ?? canvasSize.w / 2, y: at?.y ?? canvasSize.h / 2,
-    });
+    if (id) send({ type: 'SELECT_OBJECT', id });
   };
 
   /** Drop at iframe pixels: the viewport converts them to scene coordinates and answers with DROP_LOCATED. */
   const dropAsset = (file: AssetPayload, screenX?: number, screenY?: number) => {
-    if (screenX === undefined || screenY === undefined) addSprite(file);
+    if (screenX === undefined || screenY === undefined) addImageFile(file);
     else send({ type: 'LOCATE_DROP', file, screenX, screenY });
   };
 
-  /** A failed save keeps the scene dirty and says why; the previous good file is never replaced by a partial one. */
-  const saveSceneFiles = async (folder: string, text: string, atRev: number) => {
-    const fail = (error?: string) => { appendLog(`\n[Save failed: ${error ?? 'Unknown error'}]\n`); showConsole(); };
-    const cfg = await ensureConfigPersisted(folder, devScript);
-    if (!cfg.ok) return fail(cfg.error);
-    const r = await api.saveScene(folder, keyRef.current, text);
-    if (r.ok) model.markSaved(atRev); else fail(r.error);
+  const deleteObject = (id: string) => {
+    if (!step(() => model.remove(id))) return;
+    if (useEditorStore.getState().selectedId === id) select(null);
+  };
+
+  const duplicateObject = (id: string) => {
+    const hit = findById(useSceneModel.getState().scene, id);
+    if (!hit) return;
+    const copy = cloneWithNewIds(hit.obj, allIds(useSceneModel.getState().scene));
+    if (typeof copy.x === 'number') copy.x += 20;
+    if (typeof copy.y === 'number') copy.y += 20;
+    step(() => model.insert(copy, hit.parent?.id ?? null, hit.index + 1));
+    selectObject(copy.id);
+  };
+
+  const renameObject = (id: string, label: string) => {
+    const name = label.trim();
+    const cur = model.sceneObject(id);
+    if (!cur || (cur.name ?? '') === name) return;
+    step(() => model.update(id, { name: name || undefined }));
+  };
+
+  const toggleVisible = (id: string) => {
+    const o = model.sceneObject(id);
+    if (o) step(() => model.update(id, { visible: o.visible === false ? undefined : false }));
+  };
+
+  const moveObject = (id: string, parentId: string | null, index: number) => { step(() => model.move(id, parentId, index)); };
+
+  const toggleLocked = (id: string) => setLockedIds(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+
+  // ---- Saving
+  const fail = (error?: string) => { appendLog(`\n[Save failed: ${error ?? 'Unknown error'}]\n`); showConsole(); };
+
+  /** Writes the scene, and the project file when it changed; a failed write keeps its document dirty. */
+  const saveFiles = async (folder: string) => {
+    const s = useSceneModel.getState();
+    if (!s.scenePath) return fail('This scene has no file path.');
+    const sceneRev = s.rev, projRev = s.projectRev;
+    const r = await api.writeScene(folder, s.scenePath, formatJson(s.scene).replace(/\n/g, eolRef.current.scene));
+    if (!r.ok) return fail(r.error);
+    model.markSaved(sceneRev);
+    if (s.project && projRev !== s.projectSavedRev) {
+      const p = await api.writeProject(folder, formatJson(s.project).replace(/\n/g, eolRef.current.project));
+      if (!p.ok) return fail(p.error);
+      model.markProjectSaved(projRev);
+    }
   };
 
   const handleSave = async () => {
     if (!projectFolder || readOnly || useSceneModel.getState().status === 'none') return;
     if (useSceneModel.getState().blocked) {
-      appendLog(`
-[Not saved: the scene file could not be loaded, so saving would overwrite it. Fix the file and reopen the project.]
-`);
+      appendLog('\n[Not saved: the file could not be loaded, so saving would overwrite it. Fix the file and reopen the project.]\n');
       return showConsole();
     }
-    const { doc, rev: atRev } = useSceneModel.getState();
+    commitEdit();
     setSaving(true);
-    await saveSceneFiles(projectFolder, formatScene(doc, engine), atRev);
+    await saveFiles(projectFolder);
     setSaving(false);
   };
 
-  /** Reads and validates the scene file; the report ends up in the model's problems. */
-  const loadScene = async (folder: string, key = keyRef.current) => {
-    const r = await api.loadScene(folder, key);
-    if (!r.ok) {
-      return model.blockDoc(key, [{ level: 'error', message: `${r.error ?? 'Cannot read the scene file.'} The file was left untouched and saving is disabled.` }]);
+  // ---- Loading
+  const selectKey = (key: string) => { keyRef.current = key; setSceneKey(key); };
+
+  /** Reads and validates one scene file listed in the project. */
+  const loadSceneFile = async (folder: string, key: string) => {
+    const proj = useSceneModel.getState().project;
+    const entry = proj?.scenes.find(e => e.key === key);
+    if (!proj || !entry) return model.resetScene(key);
+    const r = await api.readScene(folder, entry.path);
+    if (!r.ok) return model.blockScene(key, entry.path, [err(`${r.error ?? 'Cannot read the scene file.'} The file was left untouched and saving is disabled.`)]);
+    if (!r.found) {
+      // Listed but missing: start an empty scene that Save will create.
+      model.resetScene(key, 'open', entry.path);
+      useSceneModel.setState({ problems: [{ level: 'warning', message: `${entry.path} does not exist yet; saving will create it.` }] });
+      return;
     }
-    if (!r.found) return model.resetDoc(key);
-    const { doc, problems: found, fatal } = parseScene(r.data, key, engine);
-    if (fatal) return model.blockDoc(key, [...found, { level: 'error', message: 'The file was left untouched and saving is disabled.' }]);
-    await model.loadDoc(doc, found);
+    eolRef.current.scene = r.text?.includes('\r\n') ? '\r\n' : '\n';
+    const parsed = parseJson<PfScene>(r.text ?? '');
+    if (!parsed.ok) return model.blockScene(key, entry.path, [err(`${entry.path} is not valid JSON: ${parsed.error}`), err('The file was left untouched and saving is disabled.')]);
+    const doc = parsed.value;
+    if (!doc || doc.format !== 'phaseform' || !Array.isArray(doc.objects) || typeof doc.size !== 'object') {
+      return model.blockScene(key, entry.path, [err(`${entry.path} is not a PHASEFORM scene (expected "format": "phaseform", a size and an objects list).`), err('The file was left untouched and saving is disabled.')]);
+    }
+    const problems = [...validateScene(doc), ...checkSceneAgainstProject(doc, proj, entry)];
+    if (doc.key !== entry.key) problems.push({ level: 'warning', message: `The scene's key "${doc.key}" differs from its entry "${entry.key}" in the project file.` });
+    model.loadScene(doc, entry.path, problems);
+  };
+
+  /** Reads the project file; the first scene the project lists (its entry scene first) is opened by the caller. */
+  const loadProjectFile = async (folder: string): Promise<'ok' | 'missing' | 'invalid'> => {
+    const r = await api.readProject(folder);
+    if (!r.ok) { model.setProject(null); model.blockScene(keyRef.current, null, [err(`${r.error ?? 'Cannot read phaseform.project.json.'} The file was left untouched and saving is disabled.`)]); return 'invalid'; }
+    if (!r.found) return 'missing';
+    eolRef.current.project = r.text?.includes('\r\n') ? '\r\n' : '\n';
+    const parsed = parseJson<PfProject>(r.text ?? '');
+    if (!parsed.ok) { model.setProject(null); model.blockScene(keyRef.current, null, [err(`phaseform.project.json is not valid JSON: ${parsed.error}`), err('The file was left untouched and saving is disabled.')]); return 'invalid'; }
+    const found = validateProject(parsed.value);
+    if (found.some(p => p.level === 'error')) {
+      model.setProject(null);
+      model.blockScene(keyRef.current, null, [...found, err('phaseform.project.json was left untouched and saving is disabled.')]);
+      return 'invalid';
+    }
+    model.setProject(parsed.value);
+    return 'ok';
   };
 
   /** The file changed on disk (the AI, git, an editor): reload it, asking first if there are unsaved edits. */
-  const reloadFromDisk = useLatest(async () => {
+  const reloadFromDisk = useLatest(async (relPath: string) => {
     if (!projectFolder || readOnly) return;
-    const { rev: r, savedRev: s } = useSceneModel.getState();
-    if (r !== s && !window.confirm(`${keyRef.current}.scene.json changed on disk, but the open scene has unsaved edits. Reload from disk and discard them?`)) {
-      return appendLog('\n[Scene file changed on disk; kept your unsaved edits. Saving will overwrite the external change.]\n');
+    const s = useSceneModel.getState();
+    const isProject = relPath === PROJECT_FILE;
+    const unsaved = isProject ? s.projectRev !== s.projectSavedRev : s.rev !== s.savedRev;
+    if (unsaved && !window.confirm(`${relPath} changed on disk, but the open document has unsaved edits. Reload from disk and discard them?`)) {
+      return appendLog(`\n[${relPath} changed on disk; kept your unsaved edits. Saving will overwrite the external change.]\n`);
     }
     gestureRef.current = null;
     history.clear();
-    useEditorStore.getState().setSelectedObject(null);
-    await loadScene(projectFolder);
+    if (isProject) {
+      if ((await loadProjectFile(projectFolder)) === 'ok') await loadSceneFile(projectFolder, keyRef.current);
+    } else {
+      await loadSceneFile(projectFolder, keyRef.current);
+    }
   });
 
   useEffect(() => {
     if (!projectFolder) return;
-    api.watchScene(projectFolder, sceneKey);
-    return api.onSceneChanged(() => { void reloadFromDisk.current(); });
-  }, [projectFolder, sceneKey, reloadFromDisk]);
+    void api.watchFiles(projectFolder, scenePath ? [PROJECT_FILE, scenePath] : [PROJECT_FILE]);
+    return api.onFileChanged(rel => { void reloadFromDisk.current(rel); });
+  }, [projectFolder, scenePath, reloadFromDisk]);
 
-  const refreshScenes = async (folder: string) => {
-    const list = await api.listScenes(folder);
-    setScenes(list);
-    return list;
+  const resetEditing = () => { gestureRef.current = null; history.clear(); select(null); };
+
+  /** Reads a newly opened project and opens its entry scene. 'needs-setup': the folder has no PHASEFORM project yet. */
+  const beginProject = async (folder: string): Promise<BeginResult> => {
+    resetEditing();
+    setLockedIds(new Set());
+    model.setProject(null);
+    model.resetScene('Main');
+    model.setLoading();
+    const state = await loadProjectFile(folder);
+    if (state === 'missing') { model.resetScene('Main'); return 'needs-setup'; }
+    if (state === 'invalid') return 'ready';
+    const proj = useSceneModel.getState().project!;
+    const key = (proj.scenes.find(e => e.key === proj.entry) ?? proj.scenes[0]).key;
+    selectKey(key);
+    await loadSceneFile(folder, key);
+    return 'ready';
   };
 
-  const selectKey = (key: string) => { keyRef.current = key; setSceneKey(key); };
-
-  /** Clears the scene for a newly opened project, lists its scenes and opens the first; the viewport exists only once a scene does. */
-  const beginProject = async (folder: string) => {
-    selectKey(DEFAULT_SCENE);
-    model.resetDoc(DEFAULT_SCENE);
-    model.setLoading();
-    useEditorStore.getState().setSelectedObject(null);
-    history.clear();
-    gestureRef.current = null;
-    const list = await refreshScenes(folder);
-    selectKey((list.find(e => e.hasFile) ?? list[0])?.key ?? DEFAULT_SCENE);
-    await loadScene(folder);
+  /** No project file exists: start one in memory (written on the first save) with an empty first scene. */
+  const createProject = (folder: string, w: number, h: number) => {
+    resetEditing();
+    const key = 'Main';
+    const path = scenePathFor(key);
+    selectKey(key);
+    model.setProject(newProject(baseName(folder), key, path), true);
+    model.resetScene(key, 'open', path, { width: w, height: h });
   };
 
   /** Asks what to do with unsaved edits before they are replaced; false means the user cancelled. */
   const settleUnsaved = async () => {
-    if (readOnly || useSceneModel.getState().rev === useSceneModel.getState().savedRev) return true;
+    if (readOnly || (rev === savedRev && projectRev === projectSavedRev)) return true;
     const choice = await api.confirmUnsaved(`${keyRef.current} has unsaved changes. Save before switching scenes?`);
     if (choice === 'cancel') return false;
     if (choice === 'save') {
       await handleSave();
-      if (useSceneModel.getState().rev !== useSceneModel.getState().savedRev) return false;
+      const s = useSceneModel.getState();
+      if (s.rev !== s.savedRev || s.projectRev !== s.projectSavedRev) return false;
     }
     return true;
-  };
-
-  const resetEditing = () => {
-    gestureRef.current = null;
-    history.clear();
-    useEditorStore.getState().setSelectedObject(null);
   };
 
   /** Switches to another of the project's scenes. */
@@ -310,30 +337,38 @@ export function useScene({
     resetEditing();
     selectKey(key);
     model.setLoading();
-    await loadScene(projectFolder, key);
+    await loadSceneFile(projectFolder, key);
+  };
+
+  /** Opens the scene whose file is `relPath` (a double-click in the FileSystem panel). */
+  const openSceneFile = (relPath: string) => {
+    const entry = useSceneModel.getState().project?.scenes.find(e => e.path === relPath);
+    if (entry) return void openScene(entry.key);
+    appendLog(`\n[${relPath} is not listed in ${PROJECT_FILE}. Add it to the project's scenes to open it here.]\n`);
+    showConsole();
+  };
+
+  /** Creates a scene (a new entry in the project and an empty file) and opens it. */
+  const createScene = async (key = keyRef.current) => {
+    const proj = useSceneModel.getState().project;
+    if (!projectFolder || !proj || !isSceneKey(key) || proj.scenes.some(e => e.key === key) || !(await settleUnsaved())) return;
+    resetEditing();
+    const size = useSceneModel.getState().scene.size;
+    const path = scenePathFor(key);
+    model.addSceneEntry(key, path);
+    selectKey(key);
+    model.resetScene(key, 'open', path, size);
+    await saveFiles(projectFolder);
   };
 
   /** Clears all scene state (model, history, selection, problems) and stops the file watcher. */
   const endProject = () => {
-    void api.watchScene('', DEFAULT_SCENE);
-    setScenes([]);
-    selectKey(DEFAULT_SCENE);
-    gestureRef.current = null;
-    history.clear();
-    useEditorStore.getState().setSelectedObject(null);
-    setLockedIds([]);
-    model.resetDoc(DEFAULT_SCENE);
-  };
-
-  /** Creates a scene (an empty file on disk) and opens it in the designer; without a key, the one already selected but still without a file. */
-  const createScene = async (key = keyRef.current) => {
-    if (!projectFolder || !(await settleUnsaved())) return;
+    void api.watchFiles('', []);
+    selectKey('Main');
     resetEditing();
-    selectKey(key);
-    model.resetDoc(key, 'open');
-    const { doc, rev: atRev } = useSceneModel.getState();
-    await saveSceneFiles(projectFolder, formatScene(doc, engine), atRev);
-    await refreshScenes(projectFolder);
+    setLockedIds(new Set());
+    model.setProject(null);
+    model.resetScene('Main');
   };
 
   /** Returns true when the key was an editor shortcut. */
@@ -341,17 +376,18 @@ export function useScene({
     if (readOnly || sceneStatus !== 'open') return false;
     const key = k.key.toLowerCase();
     if (k.ctrlKey || k.metaKey) {
-      if (key === 's') handleSave();
+      if (key === 's') void handleSave();
       else if (key === 'z' && !k.shiftKey) undo();
       else if (key === 'y' || (key === 'z' && k.shiftKey)) redo();
       else return false;
       return true;
     }
     const tool = TOOLS.find(t => t.key === key);
+    const sel = useEditorStore.getState().selectedId;
     if (tool) setTool(tool.mode);
     else if (key === 'f') send({ type: 'RESET_CAMERA' });
-    else if (key === 'delete' && useEditorStore.getState().selectedId) deleteObject(useEditorStore.getState().selectedId!);
-    else if (key === 'escape') send({ type: 'DESELECT_ALL' });
+    else if (key === 'delete' && sel) deleteObject(sel);
+    else if (key === 'escape') { send({ type: 'DESELECT_ALL' }); select(null); }
     else return false;
     return true;
   });
@@ -364,30 +400,36 @@ export function useScene({
       case 'KEYDOWN':
         handleShortcut.current(m);
         break;
-      case 'SCENE_READY': {
+      case 'SCENE_READY':
         send({ type: 'SET_TOOL_MODE', mode: toolMode });
         send({ type: 'SET_SNAP', enabled: useEditorStore.getState().snapEnabled });
-        send({ type: 'SET_LOCKED_IDS', ids: lockedIds });
-        // The viewport (re)appears: it gets the model, so unsaved edits survive a recreated iframe.
-        model.pushAll();
+        send({ type: 'SET_LOCKED_IDS', ids: [...lockedIds] });
+        // The viewport (re)appears without textures: it gets the whole model, so unsaved edits survive a recreated iframe.
+        model.viewportReady();
+        void model.pushAll();
         break;
-      }
+      case 'SCENE_LOADED':
+        model.setViewWarnings(m.warnings);
+        break;
       case 'OBJECT_SELECTED':
-        useEditorStore.getState().setSelectedObject(m.id, readWireProps(m), m.texW, m.texH);
+        select(m.id);
         break;
       case 'OBJECT_DESELECTED':
-        useEditorStore.getState().setSelectedObject(null);
+        select(null);
         break;
-      case 'OBJECT_TRANSFORMED':
-        beginGesture(m.id);
-        model.setProps(m.id, readWireProps(m), false);
-        if (m.id === useEditorStore.getState().selectedId) useEditorStore.getState().updateProperties(readWireProps(m));
+      case 'OBJECT_TRANSFORMED': {
+        beginGesture();
+        const patch: Record<string, unknown> = { x: m.x, y: m.y };
+        if (m.rotation !== undefined) patch.rotation = m.rotation;
+        if (m.scale !== undefined) patch.scale = m.scale;
+        model.update(m.id, patch, false);
         break;
+      }
       case 'PUSH_HISTORY':
         commitEdit();
         break;
       case 'DROP_LOCATED':
-        addSprite(m.file, { x: m.x, y: m.y });
+        addImageFile(m.file, { x: m.x, y: m.y });
         break;
       default: unhandled(m);
     }
@@ -410,9 +452,13 @@ export function useScene({
     };
   }, [iframeRef, onMessage, handleShortcut]);
 
+  const selectedId = useEditorStore(s => s.selectedId);
+  const selectedObject: PfObject | null = selectedId ? findById(scene, selectedId)?.obj ?? null : null;
+
   return {
-    objectItems, scenes, sceneKey, openScene, toolMode, saveStatus, saveBlocked: blocked, sceneStatus, createScene, problems, addPrimitive, dropAsset,
-    setTool, toggleSnap, undo, redo, updateField, commitEdit, selectObject, deleteObject, duplicateObject,
-    renameObject, reorderObject, updateMeta, toggleVisible, toggleLocked, handleSave, beginProject, endProject,
+    scene, project, scenes, sceneKey, canvasSize, selectedObject, lockedIds, toolMode, saveStatus, saveBlocked: blocked, sceneStatus, problems,
+    openScene, openSceneFile, createScene, createProject, beginProject, endProject,
+    setTool, toggleSnap, undo, redo, updateField, commitEdit, selectObject,
+    addObject, dropAsset, deleteObject, duplicateObject, renameObject, toggleVisible, toggleLocked, moveObject, handleSave,
   };
 }

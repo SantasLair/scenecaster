@@ -1,21 +1,24 @@
-# Scene format (version 1)
+# Scene format
 
-`scenecaster/scenes/<key>.scene.json`. Plain JSON, engine-neutral, flat (no nesting). Any engine can load it; engine-specific data is namespaced.
+Scenecaster edits **PHASEFORM** files: https://github.com/SantasLair/phaseform (draft v0.1). The specification, the JSON Schemas and the reference loader live there; this page only lists what Scenecaster adds.
 
-```json
-{
-  "version": 1,
-  "key": "hud",
-  "overlay": true,
-  "objects": [
-    {"id":"<uuid>","name":"playButton","kind":"sprite","asset":"assets/play.png","x":-20,"y":-20,"rotation":0,"scaleX":1,"scaleY":1,"alpha":1,"visible":true,"depth":1,"originX":1,"originY":1,"anchor":"bottom-right","interactive":true,"phaser":{"flipX":false,"flipY":false,"tint":"#ffffff","scrollFactorX":0,"scrollFactorY":0}}
-  ]
-}
-```
+## Files
 
-- **Scene:** `key` (matches the file name and the game's scene key), `overlay` (draws over another scene; canvas size comes from the game), `objects` (array; array order is the editor's list order).
-- **Object core:** `id` (UUID, stable), `name` (unique, a valid code identifier: it is the contract with code), `kind` (`sprite` with `asset`, a path relative to the project folder; or `primitive` with `shape` `rect|circle|triangle`), `x`, `y`, `rotation` (radians), `scaleX`, `scaleY`, `alpha`, `visible`, `depth` (z-order, higher is in front; defaults to list index when absent), `originX`, `originY` (0..1, the point of the object that x/y refer to; always stored, 0.5/0.5 for new objects), `anchor`, `interactive`.
-- **`anchor`:** `null` (absolute from the top-left) or one of `top-left, top, top-right, left, center, right, bottom-left, bottom, bottom-right`. With an anchor, `x`/`y` are an offset from that point of the canvas, so a HUD survives different canvas sizes. Resolution (`src/shared/anchor.ts`): absolute = anchor point of the canvas + (x, y); the viewport resolves it against the canvas size and writes dragged positions back as offsets. The file never stores resolved positions.
-- **`interactive`:** the code will attach input to this object (a button, a hotspot).
-- **Engine extension:** an object named after the project's engine (`scenecaster/project.json` `"engine": "phaser"`, the only profile today). Its fields are listed in the property table `src/shared/props.ts` (descriptors tagged `engine`), with type, default and label: for Phaser `tint`, `flipX/Y`, `scrollFactorX/Y`. The inspector shows core fields plus the active profile's extension fields. Other engines ignore the object.
-- Validation: unknown kinds/shapes, duplicate ids and bad sprites are errors (object skipped); duplicate names, non-identifier names and unknown anchors, extension fields not in the active profile, and extension objects of another engine are warnings.
+| File | Written by | Purpose |
+|---|---|---|
+| `phaseform.project.json` (project root) | Scenecaster, on the first save | Project name, entry scene, the scene list and the asset manifest |
+| `scenes/<key>.phaseform.json` | Scenecaster | One scene: size, background, and a tree of objects |
+| `scenecaster/editor.json` | Scenecaster | Editor-only settings (the chosen dev script). Never read by the game |
+
+Opening a project writes nothing. A folder without `phaseform.project.json` gets one, plus `scenes/main.phaseform.json`, when you save.
+
+## What the editor does with a document
+
+- Keeps documents as plain JSON, in their own key order, two-space indented: saving an untouched document reproduces it, and an edit changes only the lines it touches.
+- Preserves every type, field and extension it does not understand, and offers unknown object fields as raw JSON in the Inspector.
+- Validates on load with the PHASEFORM schemas (copied into `src/shared/phaseform/schema/`) plus the rules the schemas cannot express (unique ids, filter references), and checks texture and animation references against the manifest. Problems appear in the Problems panel; only a file that is not a PHASEFORM document at all blocks editing.
+- Builds the viewport with `phaseform-loader`, so what you see is what the game's loader builds. Scripts are not run.
+
+## Not in PHASEFORM, not in the editor (yet)
+
+`anchor`, `interactive`, per-object lock and the editor camera are not part of the format. Locking is session-only. See [ROADMAP.md](ROADMAP.md) for how editor-only data is planned.

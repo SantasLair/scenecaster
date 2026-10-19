@@ -1,5 +1,5 @@
 import { InspectorField } from '../components/Controls';
-import { round2 } from '../../../shared/props';
+const round2 = (n: number) => Math.round(n * 100) / 100;
 import type { BridgeObject } from '../../../shared/protocol';
 import type { LiveBridge } from './useLiveBridge';
 

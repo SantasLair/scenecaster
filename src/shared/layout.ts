@@ -4,6 +4,7 @@ export const PROJECT_DIR = 'scenecaster';
 export const SCENES_DIR = 'scenes';
 export const SCENE_EXT = '.scene.json';
 export const PROJECT_FILE = 'project.json';
+export const EDITOR_FILE = 'editor.json';
 export const DEFAULT_SCENE = 'main';
 
 export const SCENE_NAME_RE = /^[A-Za-z0-9][\w-]*$/;

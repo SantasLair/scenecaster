@@ -20,19 +20,13 @@ type AssetEntry = AssetFile | AssetFolder;
 /** One row of the FileSystem tree: `path` is absolute. */
 interface FsEntry { name: string; type: 'folder' | 'file'; path: string; ext: string }
 
-interface ProjectConfig {
-  canvasWidth: number;
-  canvasHeight: number;
-  devScript?: string;
-  engine: import('../../shared/props').EngineId;
-}
-
-/** A scene the editor can open; `hasFile` is false when project.json declares it but no layout file exists yet. */
-interface SceneEntry { key: string; hasFile: boolean }
-
-type LoadedScene = IpcResult & { found?: boolean; data?: unknown };
-
 type IpcResult = { ok: boolean; error?: string };
+
+/** Raw file text for the renderer to parse; `found` is false when the file does not exist. */
+type PfReadResult = IpcResult & { found?: boolean; text?: string };
+
+/** Editor-only settings, stored in scenecaster/editor.json (not part of PHASEFORM). */
+interface EditorSettings { devScript?: string }
 
 interface ElectronAPI {
   openFolder: () => Promise<string | null>;
@@ -42,15 +36,19 @@ interface ElectronAPI {
   listDir: (dir: string) => Promise<FsEntry[] | null>;
   findFiles: (dir: string, query: string) => Promise<FsEntry[]>;
   showItem: (path: string) => Promise<void>;
-  readProjectConfig: (folder: string) => Promise<ProjectConfig | null>;
-  writeProjectConfig: (folder: string, cfg: ProjectConfig) => Promise<IpcResult>;
   readProjectScripts: (folder: string) => Promise<string[]>;
-  saveScene: (folder: string, name: string, text: string) => Promise<IpcResult>;
   confirmUnsaved: (message: string) => Promise<'save' | 'discard' | 'cancel'>;
-  watchScene: (folder: string, name: string) => Promise<void>;
-  onSceneChanged: (cb: () => void) => () => void;
-  listScenes: (folder: string) => Promise<SceneEntry[]>;
-  loadScene: (folder: string, name: string) => Promise<LoadedScene>;
+  readProject: (folder: string) => Promise<PfReadResult>;
+  writeProject: (folder: string, text: string) => Promise<IpcResult>;
+  /** `relPath` is project-relative, forward slashes, ending in `.phaseform.json`. */
+  readScene: (folder: string, relPath: string) => Promise<PfReadResult>;
+  writeScene: (folder: string, relPath: string, text: string) => Promise<IpcResult>;
+  /** Replaces the watch set (project file and/or scene paths); an empty folder or array stops watching. */
+  watchFiles: (folder: string, relPaths: string[]) => Promise<void>;
+  onFileChanged: (cb: (relPath: string) => void) => () => void;
+  /** null: file missing or invalid. */
+  readEditorSettings: (folder: string) => Promise<EditorSettings | null>;
+  writeEditorSettings: (folder: string, settings: EditorSettings) => Promise<IpcResult>;
   startDevServer: (folder: string, script?: string) => Promise<IpcResult & { url?: string }>;
   stopDevServer: () => Promise<IpcResult>;
   onDevServerOutput: (cb: (text: string) => void) => void;

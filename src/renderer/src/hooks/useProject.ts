@@ -1,66 +1,33 @@
-import { useRef, useState } from 'react';
-import { DEFAULT_ENGINE, type EngineId } from '../../../shared/props';
+import { useState } from 'react';
 
 const api = window.electronAPI;
 
-/** The opened project folder, its canvas size, and whether scenecaster/project.json has been written yet. */
+/**
+ * The opened project folder, and the folder (if any) waiting for the setup dialog because it has no
+ * phaseform.project.json yet. Opening a project writes nothing: the project file appears on the first save.
+ */
 export function useProject() {
   const [projectFolder, setProjectFolder] = useState<string | null>(null);
-  const [canvasSize, setCanvasSize] = useState({ w: 1280, h: 720 });
-  const [engine, setEngine] = useState<EngineId>(DEFAULT_ENGINE);
   const [pendingSetupFolder, setPendingSetupFolder] = useState<string | null>(null);
-  /** True once scenecaster/project.json exists; opening a project writes nothing, the first save or setting change does. */
-  const configPersistedRef = useRef(false);
 
-  const open = (folder: string, config: ProjectConfig, persisted: boolean) => {
-    configPersistedRef.current = persisted;
-    setProjectFolder(folder);
-    setCanvasSize({ w: config.canvasWidth, h: config.canvasHeight });
-    setEngine(config.engine);
-  };
+  const open = (folder: string) => { setPendingSetupFolder(null); setProjectFolder(folder); };
 
-  const close = () => {
-    configPersistedRef.current = false;
-    setPendingSetupFolder(null);
-    setProjectFolder(null);
-    setCanvasSize({ w: 1280, h: 720 });
-    setEngine(DEFAULT_ENGINE);
-  };
+  const close = () => { setPendingSetupFolder(null); setProjectFolder(null); };
 
-  /** Folder picker; `onOpen` runs for a folder that already has a config, otherwise the setup dialog asks for the size. */
-  const choose = async (onOpen: (folder: string, config: ProjectConfig, persisted: boolean) => void) => {
+  /** Folder picker. */
+  const choose = async (onOpen: (folder: string) => void) => {
     const folder = await api.openFolder();
-    if (!folder) return;
-    const config = await api.readProjectConfig(folder);
-    if (config?.canvasWidth && config?.canvasHeight) onOpen(folder, config, true);
-    else setPendingSetupFolder(folder);
+    if (folder) onOpen(folder);
   };
 
-  const confirmSetup = (onOpen: (folder: string, config: ProjectConfig, persisted: boolean) => void, w: number, h: number) => {
-    const folder = pendingSetupFolder;
-    if (!folder) return;
-    setPendingSetupFolder(null);
-    onOpen(folder, { canvasWidth: w, canvasHeight: h, engine: DEFAULT_ENGINE }, false);
-  };
-
+  /** The folder has no PHASEFORM project: ask for a canvas size, then the scene hook creates one in memory. */
+  const requestSetup = (folder: string) => setPendingSetupFolder(folder);
   const cancelSetup = () => setPendingSetupFolder(null);
 
-  /** Writes the config the first time something is saved. */
-  const ensureConfigPersisted = async (folder: string, devScript: string) => {
-    if (configPersistedRef.current) return { ok: true } as IpcResult;
-    const cfg = await api.writeProjectConfig(folder, { canvasWidth: canvasSize.w, canvasHeight: canvasSize.h, devScript, engine });
-    if (cfg.ok) configPersistedRef.current = true;
-    return cfg;
-  };
-
+  /** Remembers the chosen dev script (the one editor-only setting). */
   const persistDevScript = (devScript: string) => {
-    if (!projectFolder) return;
-    api.writeProjectConfig(projectFolder, { canvasWidth: canvasSize.w, canvasHeight: canvasSize.h, devScript, engine })
-      .then(r => { configPersistedRef.current = r.ok; });
+    if (projectFolder) void api.writeEditorSettings(projectFolder, { devScript });
   };
 
-  return {
-    projectFolder, canvasSize, engine, pendingSetupFolder,
-    open, close, choose, confirmSetup, cancelSetup, ensureConfigPersisted, persistDevScript,
-  };
+  return { projectFolder, pendingSetupFolder, open, close, choose, requestSetup, cancelSetup, persistDevScript };
 }

@@ -1,39 +1,43 @@
-// Typed postMessage protocol between the editor (App.tsx), the viewport (phaser-main.ts)
-// and the live bridge (src/bridge/phaser-forge-bridge.js).
-import type { ObjectProps, LiveProp } from './props';
-export type { ObjectProps, LiveProp };
+// Typed postMessage protocol between the editor (App.tsx), the viewport (phaser.html / phaser-main.ts)
+// and the disabled live bridge (src/bridge/phaser-forge-bridge.js).
+// The scene itself is a PHASEFORM document (shared/phaseform); the viewport builds it with phaseform-loader and only
+// reports selection and transforms back. The editor's model stays the single source of truth.
+import type { PfScene, Vec2 } from './phaseform/types';
 
 export type ToolMode = 'select' | 'move' | 'rotate' | 'scale';
-/** Where an object's x/y are measured from: a point on the canvas; x/y are then an offset from it. null = absolute (top-left). */
-export type Anchor = 'top-left' | 'top' | 'top-right' | 'left' | 'center' | 'right' | 'bottom-left' | 'bottom' | 'bottom-right';
-export const ANCHORS: Anchor[] = ['top-left', 'top', 'top-right', 'left', 'center', 'right', 'bottom-left', 'bottom', 'bottom-right'];
-export type Shape = 'rect' | 'circle' | 'triangle';
 
-/** An object as stored in a scene file.  is a path relative to the project folder, forward slashes. */
-export type SceneObjectMeta = { id: string; name: string; anchor: Anchor | null; interactive: boolean } & (
-  | { kind: 'primitive'; shape: Shape }
-  | { kind: 'sprite'; asset: string }
-);
-export type SceneObject = SceneObjectMeta & ObjectProps;
-/** What the viewport needs to draw an object; `dataUrl` is the texture of a sprite. */
-export type LoadSceneObject = SceneObject & { dataUrl?: string };
+/** A texture the viewport should add before building: images and spritesheets, as data URLs. */
+export interface ViewAsset {
+  key: string;
+  type: 'image' | 'spritesheet';
+  dataUrl: string;
+  frameWidth?: number;
+  frameHeight?: number;
+  margin?: number;
+  spacing?: number;
+  startFrame?: number;
+  endFrame?: number;
+}
 
-/** Asset Browser drag payload ('application/phaser-asset'): AssetFile + dataUrl. */
+/** Asset Browser / FileSystem drag payload ('application/phaser-asset'): a file inside the project. */
 export interface AssetPayload { name: string; fullPath?: string; dataUrl?: string }
 
-// ---- Editor (App.tsx) -> viewport (phaser.html / phaser-main.ts)
+/** Object fields the viewport can apply to a live object without rebuilding the scene. */
+export const LIVE_FIELDS = ['x', 'y', 'rotation', 'scale', 'origin', 'alpha', 'visible', 'depth', 'flipX', 'flipY'] as const;
+export type LiveField = (typeof LIVE_FIELDS)[number];
+
+// ---- Editor (App.tsx) -> viewport
 export type EditorToViewport =
   | { type: 'SET_TOOL_MODE'; mode: ToolMode }
   | { type: 'SET_SNAP'; enabled: boolean }
   | { type: 'SET_LOCKED_IDS'; ids: string[] }
   | { type: 'RESET_CAMERA' }
   | { type: 'DESELECT_ALL' }
-  | { type: 'RESET_SCENE' }
+  /** Replaces everything: clear, add the textures, build the scene with the loader, reselect `selectedId` if it still exists. */
+  | { type: 'LOAD_SCENE'; scene: PfScene; assets: ViewAsset[]; animations: unknown[]; selectedId: string | null }
+  /** Applies only LiveField fields of one object in place (`undefined` resets the field to its default). */
+  | { type: 'SET_OBJECT'; id: string; patch: Partial<Record<LiveField, unknown>> }
   | { type: 'SELECT_OBJECT'; id: string }
-  | ({ type: 'SET_PROPERTIES'; id: string; anchor?: Anchor | null } & Partial<ObjectProps>)
-  | { type: 'DELETE_OBJECT'; id: string }
-  | { type: 'LOAD_SCENE'; objects: LoadSceneObject[] }
-  | { type: 'ADD_OBJECT'; object: LoadSceneObject; select: boolean }
   /** Asks where a drop at iframe pixels lands in the scene; answered with DROP_LOCATED. */
   | { type: 'LOCATE_DROP'; file: AssetPayload; screenX: number; screenY: number };
 
@@ -41,15 +45,19 @@ export type EditorToViewport =
 export type ViewportToEditor =
   | { type: 'SCENE_READY' }
   | { type: 'KEYDOWN'; key: string; ctrlKey: boolean; metaKey: boolean; shiftKey: boolean }
-  | ({ type: 'OBJECT_SELECTED'; id: string; texW: number; texH: number } & ObjectProps)
+  /** After LOAD_SCENE: what the loader reported (unsupported types, missing textures) and any object replaced by a placeholder. */
+  | { type: 'SCENE_LOADED'; warnings: string[] }
+  | { type: 'OBJECT_SELECTED'; id: string }
   | { type: 'OBJECT_DESELECTED' }
-  | ({ type: 'OBJECT_TRANSFORMED'; id: string } & Pick<ObjectProps, 'x' | 'y'>
-      & Partial<Pick<ObjectProps, 'rotation' | 'scaleX' | 'scaleY'>>)
+  /** A gizmo or drag changed an object. Values are local (in the parent's space), like the document's fields. */
+  | { type: 'OBJECT_TRANSFORMED'; id: string; x: number; y: number; rotation?: number; scale?: Vec2 }
   | { type: 'PUSH_HISTORY' }
   | { type: 'DROP_LOCATED'; file: AssetPayload; x: number; y: number };
 
 // ---- Live bridge, v0.3 (src/bridge/phaser-forge-bridge.js).
 // The bridge .d.ts ships into user projects and cannot import this file; keep the two in sync by hand.
+/** Properties the (disabled) live bridge can set; must match the bridge's SETTABLE_PROPS plus depth. */
+export type LiveProp = 'x' | 'y' | 'rotation' | 'scaleX' | 'scaleY' | 'alpha' | 'visible' | 'depth' | 'originX' | 'originY';
 export interface ScreenRect { x: number; y: number; width: number; height: number }
 export interface BridgeScene { key: string; active: boolean; visible: boolean }
 export interface BridgeObject {

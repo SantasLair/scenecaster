@@ -1,4 +1,5 @@
 import { useShallow } from 'zustand/react/shallow';
+import { findById } from '../../shared/phaseform/tree';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type React from 'react';
 import { useEditorStore } from './store';
@@ -51,22 +52,24 @@ export default function App() {
   const showConsole = () => { dockRef.current?.getPanel('console')?.api.setActive(); };
 
   const project = useProject();
-  const { projectFolder, canvasSize, pendingSetupFolder } = project;
+  const { projectFolder, pendingSetupFolder } = project;
   const dev = useDevServer({ projectFolder, persistDevScript: project.persistDevScript, showConsole });
   const liveUrl = LIVE_MODE ? dev.url : null;
   const live = useLiveBridge({ liveUrl, iframeRef, projectFolder, appendLog: dev.appendLog, showConsole });
   const send: (msg: EditorToViewport) => void = live.postToIframe;
   const scene = useScene({
-    iframeRef, send, projectFolder, devScript: dev.selectedScript, canvasSize, engine: project.engine,
-    ensureConfigPersisted: project.ensureConfigPersisted,
+    iframeRef, send, projectFolder,
     appendLog: dev.appendLog, showConsole,
     readOnly: !!liveUrl,
     onForgeMessage: m => { if (LIVE_MODE) live.onBridgeMessage(m); },
   });
   const {
-    objectItems, scenes, sceneKey, openScene, reorderObject, updateMeta, toolMode, saveStatus, saveBlocked, sceneStatus, createScene, problems, addPrimitive, dropAsset, setTool, toggleSnap, undo, redo, updateField, commitEdit, selectObject,
+    scenes, sceneKey, openScene, openSceneFile, moveObject, canvasSize, selectedObject, lockedIds, toolMode, saveStatus, saveBlocked, sceneStatus, createScene, problems,
+    addObject, dropAsset, setTool, toggleSnap, undo, redo, updateField, commitEdit, selectObject,
     deleteObject, duplicateObject, renameObject, toggleVisible, toggleLocked, handleSave,
   } = scene;
+  const textureKeys = (scene.project?.assets ?? []).filter(a => ['image', 'spritesheet', 'atlas'].includes(a.type)).map(a => a.key);
+  const fontKeys = (scene.project?.assets ?? []).filter(a => a.type === 'bitmapFont').map(a => a.key);
 
   useEffect(() => {
     const handleDragEnd = () => setIsDraggingAsset(false);
@@ -79,11 +82,12 @@ export default function App() {
     !(LIVE_MODE && saveStatus === 'unsaved') ||
     window.confirm('This scene has unsaved changes and running the game will discard them. Run anyway?'));
 
-  const openProject = async (folder: string, config: ProjectConfig, persisted: boolean) => {
+  const openProject = async (folder: string) => {
     if (dev.status !== 'idle') await dev.stop();
-    dev.loadScripts(folder, config.devScript);
-    project.open(folder, config, persisted);
-    scene.beginProject(folder);
+    const settings = await api.readEditorSettings(folder);
+    dev.loadScripts(folder, settings?.devScript);
+    project.open(folder);
+    if ((await scene.beginProject(folder)) === 'needs-setup') project.requestSetup(folder);
   };
   const handleOpenProject = () => project.choose(openProject);
   const handleCloseProject = async () => {
@@ -93,14 +97,20 @@ export default function App() {
       if (choice === 'cancel') return;
       if (choice === 'save') {
         await handleSave();
-        if (useSceneModel.getState().rev !== useSceneModel.getState().savedRev) return;
+        const m = useSceneModel.getState();
+        if (m.rev !== m.savedRev || m.projectRev !== m.projectSavedRev) return;
       }
     }
     await dev.reset();
     scene.endProject();
     project.close();
   };
-  const handleSetupConfirm = (w: number, h: number) => project.confirmSetup(openProject, w, h);
+  const handleSetupConfirm = (w: number, h: number) => {
+    const folder = pendingSetupFolder;
+    if (!folder) return;
+    project.cancelSetup();
+    scene.createProject(folder, w, h);
+  };
 
   const readDroppedAsset = (e: React.DragEvent): AssetPayload | null => {
     e.preventDefault();
@@ -120,7 +130,7 @@ export default function App() {
     if (file && ui.canEditScene) dropAsset(file);
   };
 
-  const iframeSrc = liveUrl ?? `./phaser.html?w=${canvasSize.w}&h=${canvasSize.h}`;
+  const iframeSrc = liveUrl ?? './phaser.html';
   const { selectedId, snapEnabled } = useEditorStore(useShallow(s => ({ selectedId: s.selectedId, snapEnabled: s.snapEnabled })));
   const pastCount = useHistory(s => s.past.length);
   const canUndo = pastCount > 0;
@@ -136,12 +146,11 @@ export default function App() {
           <Empty text={ui.mode === 'no-project' ? 'Open a project to see its objects.' : ui.mode === 'scene-blocked' ? 'The scene file could not be loaded.' : 'No scene selected.'} />
         ) : (
           <ObjectsPanel
-            items={objectItems} onReorder={reorderObject} selectedId={selectedId}
+            objects={scene.scene.objects} selectedId={selectedId} lockedIds={lockedIds}
             onSelect={selectObject} onDelete={deleteObject}
             onDuplicate={duplicateObject} onRename={renameObject}
-            onAddPrimitive={addPrimitive}
-            onToggleVisible={toggleVisible}
-            onToggleLocked={toggleLocked}
+            onToggleVisible={toggleVisible} onToggleLocked={toggleLocked}
+            onMove={moveObject} onAdd={addObject}
           />
         )}
         {isDraggingAsset && (
@@ -153,15 +162,17 @@ export default function App() {
     ),
     filesystem: (
       <FileSystemPanel projectFolder={projectFolder} onOpenProject={handleOpenProject}
-        onOpenScene={openScene} onDragAsset={() => setIsDraggingAsset(true)} />
+        onOpenScene={openSceneFile} onDragAsset={() => setIsDraggingAsset(true)} />
     ),
     assets: (
       <AssetBrowser projectFolder={projectFolder} onOpenProject={handleOpenProject} onDragAsset={() => setIsDraggingAsset(true)} />
     ),
     inspector: liveUrl ? <LiveInspector live={live} /> : !ui.canvasAvailable ? (
       <Empty text={ui.hasProject ? 'Select a scene to inspect its objects.' : 'Open a project to inspect objects.'} />
-    ) : selectedId ? (
-      <Inspector engine={project.engine} selectedId={selectedId} onEdit={updateField} onMeta={updateMeta} onCommit={commitEdit} onDelete={deleteObject} />
+    ) : selectedObject ? (
+      <Inspector key={selectedObject.id} object={selectedObject} textureKeys={textureKeys} fontKeys={fontKeys}
+        isTopLevel={findById(scene.scene, selectedObject.id)?.parent === null}
+        onChange={updateField} onCommit={commitEdit} onDelete={() => deleteObject(selectedObject.id)} />
     ) : (
       <div className="h-full flex flex-col items-center justify-center text-center p-6">
         <div className="text-5xl mb-4 opacity-20">🎯</div>
@@ -194,7 +205,7 @@ export default function App() {
           <iframe ref={iframeRef} src={iframeSrc} className="w-full h-full border-none" title="Phaser Viewport" />
         ) : (
           <ViewportPlaceholder ui={ui} error={problems.find(p => p.level === 'error')?.message}
-            onOpenProject={handleOpenProject} onNewScene={() => createScene()} />
+            onOpenProject={handleOpenProject} onNewScene={() => (scene.project ? createScene() : projectFolder && project.requestSetup(projectFolder))} />
         )}
         {isDraggingAsset && (
           <div className="absolute inset-0 z-10 cursor-copy" onDragOver={e => e.preventDefault()} onDrop={handleDropOnViewport}>

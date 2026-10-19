@@ -11,24 +11,25 @@ contextBridge.exposeInMainWorld('electronAPI', {
   showItem: (path: string) => ipcRenderer.invoke('shell:showItem', path),
   fileToDataUrl: (path: string) => ipcRenderer.invoke('fs:fileToDataUrl', path),
 
-  // Project config
-  readProjectConfig: (folder: string) => ipcRenderer.invoke('project:readConfig', folder),
-  writeProjectConfig: (folder: string, cfg: object) => ipcRenderer.invoke('project:writeConfig', folder, cfg),
+  // Project scripts
   readProjectScripts: (folder: string) => ipcRenderer.invoke('project:readScripts', folder),
-
-  // Scene
-  saveScene: (folder: string, name: string, text: string) => ipcRenderer.invoke('scene:save', folder, name, text),
   confirmUnsaved: (message: string) => ipcRenderer.invoke('dialog:unsaved', message),
-  /** An empty folder stops the watcher. */
-  watchScene: (folder: string, name: string) => ipcRenderer.invoke('scene:watch', folder, name),
-  /** Fires when the scene file was changed by something other than this editor. Returns an unsubscribe function. */
-  onSceneChanged: (cb: () => void) => {
-    const listener = () => cb();
-    ipcRenderer.on('scene:changed', listener);
-    return () => { ipcRenderer.removeListener('scene:changed', listener); };
+
+  // PHASEFORM files
+  readProject: (folder: string) => ipcRenderer.invoke('pf:readProject', folder),
+  writeProject: (folder: string, text: string) => ipcRenderer.invoke('pf:writeProject', folder, text),
+  readScene: (folder: string, relPath: string) => ipcRenderer.invoke('pf:readScene', folder, relPath),
+  writeScene: (folder: string, relPath: string, text: string) => ipcRenderer.invoke('pf:writeScene', folder, relPath, text),
+  /** Replaces the watch set; an empty folder or array stops watching. */
+  watchFiles: (folder: string, relPaths: string[]) => ipcRenderer.invoke('pf:watch', folder, relPaths),
+  /** Fires with the relPath of a watched file changed by something other than this editor. Returns an unsubscribe function. */
+  onFileChanged: (cb: (relPath: string) => void) => {
+    const listener = (_e: unknown, relPath: string) => cb(relPath);
+    ipcRenderer.on('pf:changed', listener);
+    return () => { ipcRenderer.removeListener('pf:changed', listener); };
   },
-  listScenes: (folder: string) => ipcRenderer.invoke('scene:list', folder),
-  loadScene: (folder: string, name: string) => ipcRenderer.invoke('scene:load', folder, name),
+  readEditorSettings: (folder: string) => ipcRenderer.invoke('pf:readEditorSettings', folder),
+  writeEditorSettings: (folder: string, settings: object) => ipcRenderer.invoke('pf:writeEditorSettings', folder, settings),
 
   // Dev server
   startDevServer: (folder: string, script?: string) => ipcRenderer.invoke('devserver:start', folder, script),

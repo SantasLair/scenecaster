@@ -2,14 +2,16 @@ import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 import { spawn, ChildProcess } from 'child_process';
 import fs from 'fs';
 import path from 'path';
-import { PROJECT_DIR, SCENES_DIR, SCENE_EXT, PROJECT_FILE, SCENE_NAME_RE } from '../shared/layout';
-import { isEngine, DEFAULT_ENGINE } from '../shared/props';
+import { PROJECT_DIR, EDITOR_FILE } from '../shared/layout';
 
 const IS_WIN = process.platform === 'win32';
 const IMAGE_EXTS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'];
 const DEV_URL_RE = /https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\]):\d+/;
 const DEV_SERVER_TIMEOUT_MS = 30000;
 const BRIDGE_FILES = ['phaser-forge-bridge.js', 'phaser-forge-bridge.d.ts'];
+
+const PF_PROJECT_FILE = 'phaseform.project.json';
+const PF_SCENE_SUFFIX = '.phaseform.json';
 
 const SCRIPT_NAME_RE = /^[\w:.-]+$/;
 
@@ -63,25 +65,28 @@ const guardFile = (folder: unknown, name: string) => {
   return dir ? guardPath(path.join(dir, name)) : null;
 };
 
-/** Polling watcher for the open scene file. Polling (not fs.watch) because editors and git replace files, which fs.watch handles badly. */
-const SCENE_POLL_MS = 1000;
-let sceneWatch: { file: string; sig: string; timer: NodeJS.Timeout } | null = null;
+/** Polling watcher for the open PHASEFORM files. Polling (not fs.watch) because editors and git replace files, which fs.watch handles badly. */
+const WATCH_POLL_MS = 1000;
+type Watched = { file: string; sig: string };
+let fileWatch: { files: Map<string, Watched>; timer: NodeJS.Timeout } | null = null;
 const fileSig = (file: string) => {
   try { const s = fs.statSync(file); return `${s.mtimeMs}:${s.size}`; } catch { return 'missing'; }
 };
-function stopSceneWatch() {
-  if (sceneWatch) clearInterval(sceneWatch.timer);
-  sceneWatch = null;
+function stopFileWatch() {
+  if (fileWatch) clearInterval(fileWatch.timer);
+  fileWatch = null;
 }
-function startSceneWatch(file: string) {
-  stopSceneWatch();
-  const watch = { file, sig: fileSig(file), timer: setInterval(() => {
-    const sig = fileSig(file);
-    if (sig === watch.sig) return;
-    watch.sig = sig;
-    if (sig !== 'missing') sendToRenderer('scene:changed');
-  }, SCENE_POLL_MS) };
-  sceneWatch = watch;
+function startFileWatch(files: Map<string, Watched>) {
+  stopFileWatch();
+  if (files.size === 0) return;
+  fileWatch = { files, timer: setInterval(() => {
+    for (const [rel, w] of files) {
+      const sig = fileSig(w.file);
+      if (sig === w.sig) continue;
+      w.sig = sig;
+      if (sig !== 'missing') sendToRenderer('pf:changed', rel);
+    }
+  }, WATCH_POLL_MS) };
 }
 
 const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
@@ -441,64 +446,76 @@ app.whenReady().then(() => {
     }
   });
 
-  /** `<folder>/scenecaster/<rel>`, guarded. The directory need not exist yet (created on first write). */
-  const projectFile = (folder: unknown, ...rel: string[]) => {
+  /**
+   * A project-relative path (forward slashes) to a PHASEFORM file, resolved and guarded. The name must end in
+   * `.phaseform.json` (or, with `allowProject`, be `phaseform.project.json`); absolute paths, drive letters,
+   * `.`/`..`/empty segments, backslashes and NUL are rejected, then the result must pass guardPath (symlink safe).
+   */
+  const pfFile = (folder: unknown, relPath: unknown, allowProject = false): { rel: string; file: string } | null => {
     const dir = guardFolder(folder);
-    return dir ? guardPath(path.join(dir, PROJECT_DIR, ...rel)) : null;
+    if (!dir || typeof relPath !== 'string' || !relPath) return null;
+    if (relPath.includes('\0') || relPath.includes('\\') || relPath.startsWith('/') || /^[A-Za-z]:/.test(relPath)) return null;
+    if (relPath.split('/').some(seg => seg === '' || seg === '.' || seg === '..')) return null;
+    if (!(relPath.endsWith(PF_SCENE_SUFFIX) || (allowProject && relPath === PF_PROJECT_FILE))) return null;
+    const file = guardPath(path.join(dir, ...relPath.split('/')));
+    return file ? { rel: relPath, file } : null;
   };
-  const sceneFile = (folder: unknown, name: unknown) =>
-    typeof name === 'string' && SCENE_NAME_RE.test(name) ? projectFile(folder, SCENES_DIR, name + SCENE_EXT) : null;
+  const BAD_PATH = { ok: false, error: 'Invalid folder or file path.' };
 
-  // The renderer formats the scene (stable key order, one object per line); main only validates that it is JSON and writes atomically.
-  ipcMain.handle('scene:save', (_e, folder: unknown, name: unknown, text: unknown) => {
-    const file = sceneFile(folder, name);
-    if (!file || typeof text !== 'string') return { ok: false, error: 'Invalid scene name or folder.' };
-    try { JSON.parse(text); } catch { return { ok: false, error: 'Scene text is not valid JSON.' }; }
-    const r = writeText(file, text);
+  // The renderer parses and formats the text; main only checks it is JSON (on write) and writes atomically.
+  const pfRead = (target: { file: string } | null) => {
+    if (!target) return BAD_PATH;
+    if (!fs.existsSync(target.file)) return { ok: true, found: false };
+    try { return { ok: true, found: true, text: fs.readFileSync(target.file, 'utf-8') }; }
+    catch (e) { return { ok: false, error: `Cannot read file: ${(e as Error).message}` }; }
+  };
+  const pfWrite = (target: { rel: string; file: string } | null, text: unknown) => {
+    if (!target || typeof text !== 'string') return BAD_PATH;
+    try { JSON.parse(text); } catch { return { ok: false, error: 'Text is not valid JSON.' }; }
+    const r = writeText(target.file, text);
     // Our own write must not look like an external change.
-    if (r.ok && sceneWatch?.file === file) sceneWatch.sig = fileSig(file);
+    const w = fileWatch?.files.get(target.rel);
+    if (r.ok && w && w.file === target.file) w.sig = fileSig(target.file);
     return r;
-  });
-  ipcMain.handle('scene:watch', (_e, folder: unknown, name: unknown) => {
-    const file = sceneFile(folder, name);
-    if (file) startSceneWatch(file); else stopSceneWatch();
-  });
-  ipcMain.handle('scene:load', (_e, folder: unknown, name: unknown) => {
-    const file = sceneFile(folder, name);
-    if (!file) return { ok: false, error: 'Invalid scene name or folder.' };
-    if (!fs.existsSync(file)) return { ok: true, found: false };
-    try { return { ok: true, found: true, data: JSON.parse(fs.readFileSync(file, 'utf-8')) }; }
-    catch (e) { return { ok: false, error: `Cannot read scene file: ${(e as Error).message}` }; }
-  });
+  };
 
-  // Scenes the editor can open: layout files on disk, plus scenes project.json declares with a layout (no file yet).
-  ipcMain.handle("scene:list", (_e, folder: unknown) => {
-    const dir = projectFile(folder, SCENES_DIR);
-    const cfg = readJson(projectFile(folder, PROJECT_FILE) ?? "");
-    const found = new Map<string, boolean>();
-    for (const sc of Array.isArray(cfg?.scenes) ? cfg.scenes : []) {
-      if (sc?.layout === true && typeof sc.key === "string" && SCENE_NAME_RE.test(sc.key)) found.set(sc.key, false);
+  ipcMain.handle('pf:readProject', (_e, folder: unknown) => pfRead(pfFile(folder, PF_PROJECT_FILE, true)));
+  ipcMain.handle('pf:writeProject', (_e, folder: unknown, text: unknown) => pfWrite(pfFile(folder, PF_PROJECT_FILE, true), text));
+  ipcMain.handle('pf:readScene', (_e, folder: unknown, relPath: unknown) => pfRead(pfFile(folder, relPath)));
+  ipcMain.handle('pf:writeScene', (_e, folder: unknown, relPath: unknown, text: unknown) => pfWrite(pfFile(folder, relPath), text));
+
+  ipcMain.handle('pf:watch', (_e, folder: unknown, relPaths: unknown) => {
+    const files = new Map<string, Watched>();
+    if (Array.isArray(relPaths)) {
+      for (const rel of relPaths) {
+        const t = pfFile(folder, rel, true);
+        if (t) files.set(t.rel, { file: t.file, sig: fileSig(t.file) });
+      }
     }
-    let names: string[] = [];
-    try { names = dir ? fs.readdirSync(dir) : []; } catch { /* no scenes folder yet */ }
-    for (const n of names) if (n.endsWith(SCENE_EXT) && SCENE_NAME_RE.test(n.slice(0, -SCENE_EXT.length))) found.set(n.slice(0, -SCENE_EXT.length), true);
-    return [...found].map(([key, hasFile]) => ({ key, hasFile })).sort((a, b) => a.key.localeCompare(b.key));
+    startFileWatch(files);
   });
 
-  // project.json holds game settings; the renderer sees the flat ProjectConfig shape.
-  ipcMain.handle('project:readConfig', (_e, folder: unknown) => {
-    const file = projectFile(folder, PROJECT_FILE);
-    const cfg = file ? readJson(file) : null;
-    if (!cfg?.game?.width || !cfg?.game?.height) return null;
-    return { canvasWidth: cfg.game.width, canvasHeight: cfg.game.height, devScript: cfg.devScript, engine: isEngine(cfg.engine) ? cfg.engine : DEFAULT_ENGINE };
+  // Editor-only settings (not part of PHASEFORM) live in <folder>/scenecaster/editor.json.
+  const editorFile = (folder: unknown) => {
+    const dir = guardFolder(folder);
+    return dir ? guardPath(path.join(dir, PROJECT_DIR, EDITOR_FILE)) : null;
+  };
+  ipcMain.handle('pf:readEditorSettings', (_e, folder: unknown) => {
+    const file = editorFile(folder);
+    const s = file ? readJson(file) : null;
+    return s && typeof s === 'object' && !Array.isArray(s) ? s : null;
   });
-  ipcMain.handle('project:writeConfig', (_e, folder: unknown, config: { canvasWidth: number; canvasHeight: number; devScript?: string; engine?: string }) => {
-    const file = projectFile(folder, PROJECT_FILE);
-    if (!file || !(config?.canvasWidth > 0) || !(config?.canvasHeight > 0)) return { ok: false, error: 'Invalid project config.' };
-    // Merge into the existing file: a project adopted by a game carries fields the editor does not own (scenes, flow, game settings).
-    const existing = fs.existsSync(file) ? readJson(file) : {};
-    if (!existing) return { ok: false, error: "project.json exists but cannot be read; not overwriting it." };
-    return writeJson(file, { ...existing, version: 1, engine: isEngine(config.engine) ? config.engine : DEFAULT_ENGINE, game: { ...existing.game, width: config.canvasWidth, height: config.canvasHeight }, devScript: config.devScript });
+  ipcMain.handle('pf:writeEditorSettings', (_e, folder: unknown, settings: unknown) => {
+    const file = editorFile(folder);
+    if (!file || !settings || typeof settings !== 'object' || Array.isArray(settings)) return BAD_PATH;
+    // Merge into the existing file so keys this version does not know are kept.
+    let existing: Record<string, unknown> = {};
+    if (fs.existsSync(file)) {
+      const cur = readJson(file);
+      if (!cur || typeof cur !== 'object' || Array.isArray(cur)) return { ok: false, error: 'editor.json exists but cannot be read; not overwriting it.' };
+      existing = cur;
+    }
+    return writeJson(file, { ...existing, ...settings });
   });
 
   // Dev-server scripts only: `dev`, `dev:*`, and variants like `engine:dev:fantasy`.
@@ -517,7 +534,7 @@ app.whenReady().then(() => {
   });
 });
 
-app.on('before-quit', () => { stopSceneWatch(); stopDevServer(); });
+app.on('before-quit', () => { stopFileWatch(); stopDevServer(); });
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();

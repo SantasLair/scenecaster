@@ -1,0 +1,161 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://phaseform.dev/schema/0.1.0/phaseform.project.schema.json",
+  "title": "PHASEFORM project",
+  "description": "A PHASEFORM v0.1 project file: scene list, entry scene and asset manifest. Structure only: key uniqueness, entry membership, texture references and scene key matching are defined in docs/PROJECT.md and enforced by the loader.",
+  "type": "object",
+  "required": ["format", "version", "name", "entry", "scenes", "assets"],
+  "properties": {
+    "format": { "const": "phaseform-project" },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$"
+    },
+    "name": { "type": "string", "minLength": 1 },
+    "entry": { "type": "string", "minLength": 1, "description": "Key of the scene that starts first. Must be one of the scene keys." },
+    "scenes": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/sceneEntry" }
+    },
+    "assets": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/asset" }
+    },
+    "animations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/animation" },
+      "description": "Animations, global to the game as in Phaser's animation manager. Sprites refer to them by key."
+    },
+    "extensions": { "$ref": "#/$defs/extensions" }
+  },
+  "additionalProperties": true,
+
+  "$defs": {
+    "extensions": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9-]*$" }
+    },
+
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "not": { "pattern": "\\\\|^/|^[A-Za-z]:|(^|/)\\.\\.(/|$)" },
+      "description": "Path relative to the project root, forward slashes, no leading slash, drive letter, or parent traversal."
+    },
+
+    "animation": {
+      "type": "object",
+      "required": ["key", "frames"],
+      "properties": {
+        "key": { "type": "string", "minLength": 1 },
+        "frames": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["key"],
+            "properties": {
+              "key": { "type": "string", "minLength": 1, "description": "Texture key." },
+              "frame": { "oneOf": [{ "type": "integer", "minimum": 0 }, { "type": "string", "minLength": 1 }], "description": "Frame in that texture. Defaults to the texture's default frame." },
+              "duration": { "type": "number", "minimum": 0, "default": 0, "description": "Extra milliseconds this frame stays on screen." },
+              "visible": { "type": "boolean", "description": "Sets the sprite's visibility while this frame shows." }
+            },
+            "additionalProperties": true
+          },
+          "description": "Frames in play order."
+        },
+        "frameRate": { "type": "number", "exclusiveMinimum": 0, "description": "Frames per second. Phaser uses 24 when neither frameRate nor duration is given." },
+        "duration": { "type": "number", "exclusiveMinimum": 0, "description": "Total length in milliseconds, used when frameRate is absent." },
+        "delay": { "type": "number", "minimum": 0, "default": 0 },
+        "repeat": { "type": "integer", "minimum": -1, "default": 0, "description": "-1 repeats forever." },
+        "repeatDelay": { "type": "number", "minimum": 0, "default": 0 },
+        "yoyo": { "type": "boolean", "default": false },
+        "showBeforeDelay": { "type": "boolean", "default": false },
+        "showOnStart": { "type": "boolean", "default": false },
+        "hideOnComplete": { "type": "boolean", "default": false },
+        "skipMissedFrames": { "type": "boolean", "default": true },
+        "randomFrame": { "type": "boolean", "default": false }
+      },
+      "additionalProperties": true
+    },
+
+    "sceneEntry": {
+      "type": "object",
+      "required": ["key", "path"],
+      "properties": {
+        "key": { "type": "string", "minLength": 1 },
+        "path": { "$ref": "#/$defs/path" },
+        "assets": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Asset keys to preload for this scene. Omit to preload all."
+        },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "additionalProperties": true
+    },
+
+    "asset": {
+      "type": "object",
+      "required": ["key", "type"],
+      "properties": {
+        "key": { "type": "string", "minLength": 1 },
+        "type": { "type": "string", "minLength": 1, "description": "Open registry: unknown types are valid and must be preserved." },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "additionalProperties": true,
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "image" } }, "required": ["type"] },
+          "then": { "required": ["url"], "properties": { "url": { "$ref": "#/$defs/path" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "spritesheet" } }, "required": ["type"] },
+          "then": {
+            "required": ["url", "frameWidth", "frameHeight"],
+            "properties": {
+              "url": { "$ref": "#/$defs/path" },
+              "frameWidth": { "type": "integer", "minimum": 1 },
+              "frameHeight": { "type": "integer", "minimum": 1 },
+              "startFrame": { "type": "integer", "minimum": 0 },
+              "endFrame": { "type": "integer", "minimum": 0 },
+              "margin": { "type": "integer", "minimum": 0 },
+              "spacing": { "type": "integer", "minimum": 0 },
+              "frames": { "type": "integer", "minimum": 1, "description": "Optional frame count, lets tools check integer frame indices." }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "atlas" } }, "required": ["type"] },
+          "then": {
+            "required": ["url", "atlasUrl"],
+            "properties": {
+              "url": { "$ref": "#/$defs/path" },
+              "atlasUrl": { "$ref": "#/$defs/path" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "bitmapFont" } }, "required": ["type"] },
+          "then": {
+            "required": ["url", "dataUrl"],
+            "properties": {
+              "url": { "$ref": "#/$defs/path" },
+              "dataUrl": { "$ref": "#/$defs/path" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "audio" } }, "required": ["type"] },
+          "then": {
+            "required": ["urls"],
+            "properties": {
+              "urls": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/path" } }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

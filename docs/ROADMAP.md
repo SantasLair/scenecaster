@@ -106,15 +106,15 @@ Built on the v1 format. Anything format-specific is redone in Phase 2; the edito
 ### Phase 2: Adopt PHASEFORM (format track, first)
 Phase A of the PHASEFORM plan. The riskiest piece is the viewport; the rest follows from it.
 - [x] **S** Add `phaseform-loader` as a dependency (published to npm, `^0.1.0`).
-- [~] **M** Viewport builds objects through the loader. *Done for the flat v1 objects (images, rectangle/ellipse/triangle); gizmos, anchors and tint applied on top. Still to do: build the whole scene document through `build()`, containers, text and the other types.*
-- [ ] **M** **Tree model:** `sceneModel.ts`, undo history (commands carry a path, reparenting is a command) and the Objects panel (drag-reorder depth becomes drag-reparent). Gizmo math applies parent transforms.
-- [ ] **M** **Schema-driven inspector** from `phaseform.schema.json`, replacing the table in `src/shared/props.ts`. Needs the schemas shipped in a package (see Phase 5, or bundle them into the loader).
-- [ ] **S** Validate on load and save with the PHASEFORM checks; results in the Problems panel; unknown types and fields preserved.
-- [ ] **M** Read and write `phaseform.project.json`: scene list, asset manifest. The Asset Browser writes manifest entries (key, type, url) instead of bare paths.
-- [ ] **M** **v1 migration** (`.scene.json` to `.phaseform.json`) with tests; port round-trip checks from the PHASEFORM conformance suite.
-- [ ] **S** Name uniqueness rule across the whole scene (the code contract), with rename reporting.
+- [x] **M** Viewport builds the whole scene document through the loader (containers, text, shapes, tileSprites, filters; a failing object becomes a placeholder), with gizmos that work through parent transforms.
+- [x] **M** **Tree model:** the scene is a tree; undo is snapshot-based; the Objects panel supports nesting, drag-reparent, rename, duplicate, lock and visibility.
+- [x] **M** **Inspector** driven by a per-type field table (`inspectorFields.ts`) with raw-JSON editing for anything it does not know. *(Table-driven rather than generated from the JSON schema.)*
+- [x] **S** Validate on load with the PHASEFORM schemas (vendored) plus the cross-checks the schemas cannot express; results in the Problems panel; unknown types and fields are preserved and files keep their line endings.
+- [~] **M** Read and write `phaseform.project.json`: scene list and asset manifest are read, a dropped image is added to the manifest, new scenes are registered. Not yet: editing manifest entries (spritesheet frames, atlases, fonts) or animations in the UI.
+- [x] **M** ~~v1 migration~~ Dropped: no backward compatibility with the flat format was wanted. Port round-trip checks from the PHASEFORM conformance suite is still open.
+- [~] **S** Objects have a unique `id` (enforced) and an optional `name`; the old identifier-name rule is gone with the flat format.
 - [ ] **S** Propose `anchor` and `interactive` to the PHASEFORM spec, and store them in the editor sidecar meanwhile.
-- [ ] **S** Rewrite `SCENE_FORMAT.md` as a short pointer to the PHASEFORM spec plus Scenecaster's extra rules.
+- [x] **S** `SCENE_FORMAT.md` is now a short pointer to the PHASEFORM spec plus Scenecaster's rules.
 
 ### Phase 3: Godot look and feel (look track)
 Step 1 does not depend on Phase 2 and can go first for a quick visible win. Godot's code is MIT, so porting algorithms is fine; its icons are CC BY 4.0 (attribute in `THIRD_PARTY.md`). Do not use Godot's logo or name in the UI.
