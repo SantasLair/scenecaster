@@ -1,4 +1,5 @@
 import * as Phaser from 'phaser';
+import { build as buildPhaseform } from 'phaseform-loader';
 import { PROP_KEYS, describe, type ObjectProps } from '../../shared/props';
 import { resolveAnchor, toOffset } from '../../shared/anchor';
 import {
@@ -18,6 +19,18 @@ const PRIMITIVE_SZ = 64;
 const CANVAS = { w: CANVAS_W, h: CANVAS_H };
 
 type Sprite = Phaser.GameObjects.Sprite;
+
+const WHITE = { color: '#ffffff', alpha: 1 };
+
+/** The PHASEFORM object for a scene object; `key` is the loaded texture of a sprite. Position is applied afterwards (anchors). */
+function toPhaseform(obj: LoadSceneObject, key?: string): Record<string, unknown> {
+  const base = { id: obj.id, name: obj.name, x: 0, y: 0 };
+  if (obj.kind === 'sprite') return { ...base, type: 'image', key };
+  const S = PRIMITIVE_SZ;
+  if (obj.shape === 'rect') return { ...base, type: 'rectangle', width: S, height: S, fill: WHITE };
+  if (obj.shape === 'circle') return { ...base, type: 'ellipse', width: S, height: S, fill: WHITE };
+  return { ...base, type: 'triangle', fill: WHITE, points: [{ x: S / 2, y: 0 }, { x: S, y: S }, { x: 0, y: S }] };
+}
 
 const post = (msg: ViewportToEditor) => window.parent.postMessage(msg, '*');
 
@@ -231,16 +244,22 @@ class EditorScene extends Phaser.Scene {
   }
 
   private createObject(obj: LoadSceneObject, select: boolean) {
-    const add = (texture: string) => {
-      const spr = this.add.sprite(0, 0, texture);
+    const make = (texture?: string) => {
+      let spr: Sprite | undefined;
+      try {
+        spr = buildPhaseform(this, { objects: [toPhaseform(obj, texture)] }).byId.get(obj.id) as Sprite | undefined;
+      } catch (e) {
+        console.error(`PHASEFORM loader failed for "${obj.name}"`, e);
+      }
+      if (!spr) return;
       this.anchors.set(obj.id, obj.anchor);
       this.applyProps(obj.id, spr, obj);
       spr.setInteractive({ draggable: true });
       this.sprites.set(obj.id, spr);
       if (select) this.selectSprite(obj.id, spr);
     };
-    if (obj.kind === 'primitive') add(this.primitiveTexture(obj.shape));
-    else this.withAssetTexture(obj.asset, obj.dataUrl, add);
+    if (obj.kind === 'primitive') make();
+    else this.withAssetTexture(obj.asset, obj.dataUrl, make);
   }
 
   private clearScene() {
@@ -248,19 +267,6 @@ class EditorScene extends Phaser.Scene {
     for (const spr of this.sprites.values()) spr.destroy();
     this.sprites.clear();
     this.anchors.clear();
-  }
-
-  private primitiveTexture(shape: Shape) {
-    const key = `prim_${shape}`;
-    if (this.textures.exists(key)) return key;
-    const sz = PRIMITIVE_SZ;
-    const g = this.add.graphics().fillStyle(0xffffff, 1).lineStyle(2, 0xffffff, 0.3);
-    if (shape === 'rect') g.fillRect(2, 2, sz - 4, sz - 4).strokeRect(2, 2, sz - 4, sz - 4);
-    if (shape === 'circle') g.fillCircle(sz / 2, sz / 2, sz / 2 - 2).strokeCircle(sz / 2, sz / 2, sz / 2 - 2);
-    if (shape === 'triangle') g.fillTriangle(sz / 2, 2, sz - 2, sz - 2, 2, sz - 2).strokeTriangle(sz / 2, 2, sz - 2, sz - 2, 2, sz - 2);
-    g.generateTexture(key, sz, sz);
-    g.destroy();
-    return key;
   }
 
   /** Runs `cb` once the asset texture exists, loading it from `dataUrl` or falling back to a placeholder. */
@@ -305,6 +311,11 @@ class EditorScene extends Phaser.Scene {
       if (k === 'x' || k === 'y') continue;
       const v = p[k];
       if (v === undefined) continue;
+      if (k === 'tint' && !('setTint' in s)) {
+        // loader-built shapes have no tint; their fill colour plays that role
+        (s as unknown as Phaser.GameObjects.Shape).setFillStyle(parseInt(String(v).replace('#', ''), 16));
+        continue;
+      }
       const d = describe(k);
       if (d.set) d.set(s, v);
       else (s as unknown as Record<string, unknown>)[k] = v;
