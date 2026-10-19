@@ -27,7 +27,7 @@ function slot(key: keyof DockCtx) {
 // The viewport hosts an iframe: no scrolling, and it must fill the panel.
 function ViewportSlot(_: IDockviewPanelProps) {
   const ctx = useContext(DockContext);
-  return <div className="relative h-full w-full overflow-hidden bg-[#1e1e1e]">{ctx?.viewport}</div>;
+  return <div className="relative h-full w-full overflow-hidden bg-gray-950">{ctx?.viewport}</div>;
 }
 
 const components = {

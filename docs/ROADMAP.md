@@ -100,7 +100,7 @@ Built on the v1 format. Anything format-specific is redone in Phase 2; the edito
 - [ ] **S** Folder-name constant is in `src/shared/layout.ts`; the generated docs (`MIGRATE.md` and others) that read it are not started.
 
 ### Phase 1b: Quick wins (can go any time)
-- [ ] **S** **Remove "Phaser Forge" naming**: the `⚡ Phaser Forge` toolbar label (`App.tsx`), `productName`, `appId` and package name in `package.json`, the viewport page title, and docs. Leave the disabled live-mode bridge files (`phaser-forge-bridge.*`) alone, and keep the README's credit line to the upstream project. Folded into Phase 9 only as a final sweep.
+- [x] **S** **Remove "Phaser Forge" naming** *(done for the toolbar label, `productName`, `appId`, package name and viewport title; the bridge files and the README credit line stay)*: the `⚡ Phaser Forge` toolbar label (`App.tsx`), `productName`, `appId` and package name in `package.json`, the viewport page title, and docs. Leave the disabled live-mode bridge files (`phaser-forge-bridge.*`) alone, and keep the README's credit line to the upstream project. Folded into Phase 9 only as a final sweep.
 - [ ] **S** Set up `THIRD_PARTY.md` (needed in Phase 3 for Godot icons).
 
 ### Phase 2: Adopt PHASEFORM (format track, first)
@@ -118,7 +118,7 @@ Phase A of the PHASEFORM plan. The riskiest piece is the viewport; the rest foll
 
 ### Phase 3: Godot look and feel (look track)
 Step 1 does not depend on Phase 2 and can go first for a quick visible win. Godot's code is MIT, so porting algorithms is fine; its icons are CC BY 4.0 (attribute in `THIRD_PARTY.md`). Do not use Godot's logo or name in the UI.
-- [ ] **M** **Theme foundation.** Port Godot's theme derivation (`editor/themes/editor_theme_manager.cpp`): base colour, accent colour and contrast generate every surface shade as CSS variables, replacing the `@theme` tokens in `index.css`. Add Inter and JetBrains Mono (OFL). Use Godot's compact density and radius tokens. Check the Modern look first.
+- [~] **M** **Theme foundation.** *(Done: `theme/godotTheme.ts` derives the surfaces, fonts and accent from base, accent and contrast and maps them onto the Tailwind palettes and dockview; Inter and JetBrains Mono are bundled; presets Default, Black, Gray, Breeze Dark and Light exist in code. Still to do: radius and spacing tokens applied to components, the theme settings UI, the viewport iframe colours.)* Port Godot's theme derivation (`editor/themes/editor_theme_manager.cpp`): base colour, accent colour and contrast generate every surface shade as CSS variables, replacing the `@theme` tokens in `index.css`. Add Inter and JetBrains Mono (OFL). Use Godot's compact density and radius tokens. Check the Modern look first.
 - [ ] **M** **Icons.** Copy only the used SVGs from Godot's `editor/icons/` into `src/renderer/src/icons/`, recoloured with `currentColor`, behind an `Icon` component. Replace the lucide usages.
 - [ ] **L** **Components**, in this order: Objects panel (tree rows, disclosure arrows, inline visibility and lock), Inspector (two-column rows, collapsible sections, reset arrows, drag-to-scrub numbers), dockview tabs and splitters, menus and toolbars. Do the tree rows and inspector after Phase 2 steps 3 and 4 land, so they are restyled once.
 - [ ] **M** **Viewport chrome:** tool toolbar, zoom control, grid and snap menu, Godot's selection and gizmo colours on the overlay.

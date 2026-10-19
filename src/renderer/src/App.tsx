@@ -222,7 +222,7 @@ export default function App() {
       )}
 
       <header className="toolbar flex h-11 items-center gap-1 px-3 flex-shrink-0">
-        <span className="font-bold text-sm text-white mr-3 tracking-wide whitespace-nowrap">⚡ Phaser Forge</span>
+        <span className="font-bold text-sm text-white mr-3 tracking-wide whitespace-nowrap">Scenecaster</span>
 
         <button onClick={handleOpenProject} title={projectFolder ?? 'Open Project Folder'}
           className="flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs text-gray-400 hover:bg-gray-700 hover:text-white border border-gray-700 transition-all max-w-40 mr-1">

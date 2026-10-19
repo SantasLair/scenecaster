@@ -1,44 +1,33 @@
 @import "tailwindcss";
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
+@import "@fontsource-variable/inter";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
 
+/*
+ * Colours come from theme/godotTheme.ts, which derives Godot-style surfaces, fonts and an accent from a base colour,
+ * an accent and a contrast, and sets them as --gd-* variables plus the Tailwind gray-* and blue-* palettes on :root
+ * before the first render. The fallbacks below are the Default preset, for anything painted before that runs.
+ */
 @theme {
-  /* Neutral grays matching tulio-editor (re-tints every gray-* utility) */
-  --color-gray-50: #f5f5f5;
-  --color-gray-100: #ececec;
-  --color-gray-200: #e0e0e0;
-  --color-gray-300: #cfcfcf;
-  --color-gray-400: #bdbdbd;
-  --color-gray-500: #9a9a9a;
-  --color-gray-600: #7a7a7a;
-  --color-gray-700: #444444;
-  --color-gray-800: #3c3c3c;
-  --color-gray-900: #2b2b2b;
-  --color-gray-950: #1e1e1e;
-
-  /* Tulio blue accent (blue-* utilities) */
-  --color-blue-50: #eef6ff;
-  --color-blue-100: #d9ebff;
-  --color-blue-200: #b8dbff;
-  --color-blue-300: #8cc5ff;
-  --color-blue-400: #5fa3e8;
-  --color-blue-500: #4aa3ff;
-  --color-blue-600: #3a8be0;
-  --color-blue-700: #2f70b8;
-  --color-blue-800: #265a93;
-  --color-blue-900: #1f4770;
-  --color-blue-950: #162f4a;
+  --font-sans: "Inter Variable", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --radius-sm: 3px;
+  --radius-md: 4px;
+  --radius-lg: 4px;
 }
 
 :root {
-  --sc-bg: #1e1e1e;
-  --sc-panel: #2b2b2b;
-  --sc-panel-2: #3c3c3c;
-  --sc-border: #444444;
-  --sc-text: #e0e0e0;
-  --sc-muted: #bdbdbd;
-  --sc-violet: #4aa3ff;
-  --sc-violet-light: #5fa3e8;
-  --sc-sky: #4aa3ff;
+  --gd-surface-lowest: #141414;
+  --gd-surface-lower: #1b1b1b;
+  --gd-surface-base: #292929;
+  --gd-surface-high: #393939;
+  --gd-button-normal: #424242;
+  --gd-separator: rgb(0 0 0 / 0.4);
+  --gd-accent: #569eff;
+  --gd-font-normal: rgb(255 255 255 / 0.75);
+  --gd-font-secondary: rgb(255 255 255 / 0.55);
+  --gd-font-focus: #fff;
+  --gd-radius: 4px;
 }
 
 /* Base */
@@ -48,85 +37,90 @@ html, body, #root {
   margin: 0;
   padding: 0;
   overflow: hidden;
-  font-family: "Segoe UI", "Segoe UI Variable", system-ui, -apple-system, "Open Sans", "Noto Sans", Arial, sans-serif;
-  background: var(--sc-bg);
-  color: var(--sc-text);
+  font-family: var(--font-sans);
+  background: var(--gd-surface-base);
+  color: var(--gd-font-normal);
   -webkit-font-smoothing: antialiased;
 }
 
 /* Scrollbar */
-::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: #5a5a5a;
-  border-radius: 3px;
+  background: var(--gd-font-disabled, rgb(255 255 255 / 0.2));
+  border-radius: var(--gd-radius);
 }
-::-webkit-scrollbar-thumb:hover { background: var(--sc-violet); }
+::-webkit-scrollbar-thumb:hover { background: var(--gd-font-secondary); }
 
 /* Number inputs */
 input[type='number'] {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
 }
 input[type='number']::-webkit-inner-spin-button,
 input[type='number']::-webkit-outer-spin-button { -webkit-appearance: none; }
 
+/* Focus ring, as Godot draws it: a 2px accent outline */
+:where(button, input, select, textarea):focus-visible {
+  outline: 2px solid var(--gd-focus-ring, var(--gd-accent));
+  outline-offset: -1px;
+}
+
 /* Color picker */
 input[type='color'] {
   -webkit-appearance: none;
   padding: 0;
-  border: 1px solid #5a5a5a;
-  border-radius: 4px;
+  border: 1px solid var(--gd-button-border-normal, var(--gd-button-normal));
+  border-radius: var(--gd-radius);
   cursor: pointer;
 }
 input[type='color']::-webkit-color-swatch-wrapper { padding: 0; }
 input[type='color']::-webkit-color-swatch {
   border: none;
-  border-radius: 3px;
+  border-radius: calc(var(--gd-radius) - 1px);
 }
 
-/* Toolbar */
+/* Toolbar: Godot's top bar sits on the lowest surface */
 .toolbar {
-  background: var(--sc-panel-2);
-  border-bottom: 1px solid var(--sc-border);
-  box-shadow: 0 1px 8px rgba(0,0,0,.4);
+  background: var(--gd-surface-lowest);
+  border-bottom: 1px solid var(--gd-separator);
 }
 
-/* Inspector section divider */
+/* Inspector section header: Godot's category band */
 .section-label {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--sc-muted);
-  padding-bottom: 4px;
+  color: var(--gd-font-secondary);
+  background: var(--gd-surface-high);
+  border-radius: var(--gd-radius);
+  padding: 3px 8px;
   margin-bottom: 2px;
-  border-bottom: 1px solid var(--sc-border);
 }
 
-/* Dockview theme: neutral grays, #4aa3ff accent, Segoe UI */
+/* Dockview, mapped onto Godot's Modern tab and panel colours: the tab bar is the lowest surface, the selected tab and
+   the panel content share the base surface, unselected tabs fall back to the tab bar colour. */
 .sc-dock {
-  --dv-background-color: #1e1e1e;
-  --dv-group-view-background-color: #2b2b2b;
-  --dv-tabs-and-actions-container-background-color: #3c3c3c;
-  --dv-activegroup-visiblepanel-tab-background-color: #2b2b2b;
-  --dv-activegroup-hiddenpanel-tab-background-color: #3c3c3c;
-  --dv-inactivegroup-visiblepanel-tab-background-color: #2b2b2b;
-  --dv-inactivegroup-hiddenpanel-tab-background-color: #3c3c3c;
-  --dv-activegroup-visiblepanel-tab-color: #e0e0e0;
-  --dv-activegroup-hiddenpanel-tab-color: #bdbdbd;
-  --dv-inactivegroup-visiblepanel-tab-color: #bdbdbd;
-  --dv-inactivegroup-hiddenpanel-tab-color: #9a9a9a;
-  --dv-tab-divider-color: #444444;
-  --dv-separator-border: #444444;
-  --dv-paneview-header-border-color: #444444;
-  --dv-drag-over-background-color: rgba(74, 163, 255, 0.25);
-  --dv-drag-over-border-color: #4aa3ff;
-  --dv-sash-color: #444444;
-  --dv-active-sash-color: #4aa3ff;
-  font-family: "Segoe UI", "Segoe UI Variable", system-ui, sans-serif;
+  --dv-background-color: var(--gd-surface-lowest);
+  --dv-group-view-background-color: var(--gd-surface-base);
+  --dv-tabs-and-actions-container-background-color: var(--gd-surface-lowest);
+  --dv-activegroup-visiblepanel-tab-background-color: var(--gd-surface-base);
+  --dv-activegroup-hiddenpanel-tab-background-color: var(--gd-surface-lowest);
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--gd-surface-base);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: var(--gd-surface-lowest);
+  --dv-activegroup-visiblepanel-tab-color: var(--gd-font-normal);
+  --dv-activegroup-hiddenpanel-tab-color: var(--gd-font-secondary);
+  --dv-inactivegroup-visiblepanel-tab-color: var(--gd-font-normal);
+  --dv-inactivegroup-hiddenpanel-tab-color: var(--gd-font-secondary);
+  --dv-tab-divider-color: transparent;
+  --dv-separator-border: var(--gd-separator);
+  --dv-paneview-header-border-color: var(--gd-separator);
+  --dv-drag-over-background-color: var(--gd-selection, rgb(86 158 255 / 0.4));
+  --dv-drag-over-border-color: var(--gd-accent);
+  --dv-sash-color: var(--gd-separator);
+  --dv-active-sash-color: var(--gd-accent);
+  font-family: var(--font-sans);
   font-size: 12px;
   width: 100%;
   height: 100%;
 }
-.sc-dock .dv-tab.dv-active-tab { box-shadow: inset 0 -2px 0 #4aa3ff; }
+.sc-dock .dv-tab { border-radius: var(--gd-radius) var(--gd-radius) 0 0; }
