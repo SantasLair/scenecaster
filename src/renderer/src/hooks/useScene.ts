@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useEditorStore } from '../store';
@@ -71,7 +71,10 @@ export function useScene({ iframeRef, send, projectFolder, appendLog, showConsol
     scene: s.scene, project: s.project, rev: s.rev, savedRev: s.savedRev, projectRev: s.projectRev, projectSavedRev: s.projectSavedRev,
     blocked: s.blocked, sceneStatus: s.status, scenePath: s.scenePath,
   })));
-  const problems = useSceneModel(useShallow(allProblems));
+  // Select the two stored lists, not allProblems(): it builds new objects on every call, which makes the selector never settle.
+  const docProblems = useSceneModel(s => s.problems);
+  const viewWarnings = useSceneModel(s => s.viewWarnings);
+  const problems = useMemo(() => allProblems({ problems: docProblems, viewWarnings }), [docProblems, viewWarnings]);
   const dirty = rev !== savedRev || projectRev !== projectSavedRev;
   const saveStatus: SaveStatus = saving ? 'saving' : dirty ? 'unsaved' : 'saved';
   const scenes = project?.scenes ?? [];
