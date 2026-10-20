@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import type { PfObject } from '../../../shared/phaseform/types';
+import SheetPreview from './SheetPreview';
+import type { PfAsset, PfObject } from '../../../shared/phaseform/types';
 import {
   advancedKeys, degToRad, getAt, isHexColor, parseNumStr, pointCount, radToDeg, sectionsFor, setAt,
   type FieldDef,
@@ -11,6 +12,8 @@ interface Props {
   textureKeys: string[];
   /** bitmapFont keys. */
   fontKeys: string[];
+  /** The project's asset entries: a spritesheet gets a frame picker under its object's Frame field. */
+  assets: PfAsset[];
   /** Depth only applies to top-level objects. */
   isTopLevel: boolean;
   /** A value of undefined removes the field. `commit` ends the undo step at once (toggles, selects). */
@@ -20,13 +23,13 @@ interface Props {
   onDelete(): void;
 }
 
-const inputCls = 'bg-gray-900 border border-gray-700 rounded px-2 py-0.5 text-xs text-white focus:outline-none focus:border-blue-500';
+export const inputCls = 'bg-gray-900 border border-gray-700 rounded px-2 py-0.5 text-xs text-white focus:outline-none focus:border-blue-500';
 
 const fmt = (v: number) => String(Number(v.toFixed(4)));
 
 // ---------------------------------------------------------------- primitives
 
-function NumberInput({ value, def, min, max, step, int, width = 'w-24', onValue, onCommit }: {
+export function NumberInput({ value, def, min, max, step, int, width = 'w-24', onValue, onCommit }: {
   value: number | undefined; def: number; min?: number; max?: number; step?: number; int?: boolean; width?: string;
   onValue(v: number): void; onCommit(): void;
 }) {
@@ -54,7 +57,7 @@ function NumberInput({ value, def, min, max, step, int, width = 'w-24', onValue,
   );
 }
 
-function TextInput({ value, onValue, onCommit, placeholder, className = 'flex-1 min-w-0' }: {
+export function TextInput({ value, onValue, onCommit, placeholder, className = 'flex-1 min-w-0' }: {
   value: string; onValue(v: string): void; onCommit(): void; placeholder?: string; className?: string;
 }) {
   return (
@@ -87,7 +90,7 @@ function ColorInput({ value, free, onValue, onCommit, onOneShot }: {
 }
 
 /** A raw JSON editor: parses on blur, never applies invalid JSON. Empty text removes the field unless `required`. */
-function JsonBox({ value, required, rows = 4, onApply }: {
+export function JsonBox({ value, required, rows = 4, onApply }: {
   value: unknown; required?: boolean; rows?: number; onApply(v: unknown): void;
 }) {
   const pretty = value === undefined ? '' : JSON.stringify(value, null, 2);
@@ -124,7 +127,7 @@ function JsonBox({ value, required, rows = 4, onApply }: {
   );
 }
 
-function Row({ label, children, onReset, hint, tall }: {
+export function Row({ label, children, onReset, hint, tall }: {
   label: string; children: ReactNode; onReset?: () => void; hint?: string; tall?: boolean;
 }) {
   return (
@@ -155,8 +158,8 @@ function CopyButton({ text }: { text: string }) {
 
 // ---------------------------------------------------------------- one table field
 
-function Field({ def, obj, textureKeys, fontKeys, onChange, onCommit }: {
-  def: FieldDef; obj: PfObject; textureKeys: string[]; fontKeys: string[];
+function Field({ def, obj, textureKeys, fontKeys, assets, onChange, onCommit }: {
+  def: FieldDef; obj: PfObject; textureKeys: string[]; fontKeys: string[]; assets: PfAsset[];
   onChange: Props['onChange']; onCommit: () => void;
 }) {
   const raw = getAt(obj, def.path);
@@ -220,8 +223,16 @@ function Field({ def, obj, textureKeys, fontKeys, onChange, onCommit }: {
     }
     case 'numstr': {
       const shown = typeof raw === 'number' || typeof raw === 'string' ? String(raw) : '';
-      return row(<TextInput value={shown} placeholder={def.def !== undefined ? String(def.def) : 'default'}
+      const sheet = def.path[0] === 'frame' && typeof obj.key === 'string' ? assets.find(a => a.key === obj.key && a.type === 'spritesheet') : undefined;
+      const input = row(<TextInput value={shown} placeholder={def.def !== undefined ? String(def.def) : 'default'}
         onValue={s => set(parseNumStr(s))} onCommit={onCommit} />);
+      if (!sheet) return input;
+      return (
+        <>
+          {input}
+          <div className="mb-1"><SheetPreview asset={sheet} maxSize={220} selected={typeof raw === 'number' ? raw : undefined} onPick={i => set(i, true)} /></div>
+        </>
+      );
     }
     case 'texture':
     case 'font': {
@@ -266,7 +277,7 @@ function Field({ def, obj, textureKeys, fontKeys, onChange, onCommit }: {
 
 // ---------------------------------------------------------------- inspector
 
-export default function Inspector({ object, textureKeys, fontKeys, isTopLevel, onChange, onCommit, onDelete }: Props) {
+export default function Inspector({ object, textureKeys, fontKeys, assets, isTopLevel, onChange, onCommit, onDelete }: Props) {
   const sections = sectionsFor(object.type, isTopLevel);
   const advanced = advancedKeys(object, isTopLevel);
 
@@ -282,7 +293,7 @@ export default function Inspector({ object, textureKeys, fontKeys, isTopLevel, o
           <CopyButton text={object.id} />
         </div>
         {sections.find(([s]) => s === 'Identity')?.[1].map(def => (
-          <Field key={def.path.join('.') + def.kind} def={def} obj={object} textureKeys={textureKeys} fontKeys={fontKeys}
+          <Field key={def.path.join('.') + def.kind} def={def} obj={object} textureKeys={textureKeys} fontKeys={fontKeys} assets={assets}
             onChange={onChange} onCommit={onCommit} />
         ))}
       </section>
@@ -291,7 +302,7 @@ export default function Inspector({ object, textureKeys, fontKeys, isTopLevel, o
         <section key={section}>
           <div className="section-label mb-2">{section}</div>
           {defs.filter(d => !d.when || d.when(object)).map(def => (
-            <Field key={def.path.join('.') + def.kind} def={def} obj={object} textureKeys={textureKeys} fontKeys={fontKeys}
+            <Field key={def.path.join('.') + def.kind} def={def} obj={object} textureKeys={textureKeys} fontKeys={fontKeys} assets={assets}
               onChange={onChange} onCommit={onCommit} />
           ))}
         </section>

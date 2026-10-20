@@ -7,6 +7,7 @@ import type { EditorToViewport, LiveField, ViewAsset } from '../../shared/protoc
 import { LIVE_FIELDS } from '../../shared/protocol';
 import type { PfAsset, PfObject, PfProject, PfScene, Problem } from '../../shared/phaseform/types';
 import { newScene } from '../../shared/phaseform/format';
+import { assetUses, removeAssetKey, renameAssetKey, updateAssetFields } from '../../shared/phaseform/assets';
 import { insertObject, moveObject, removeObject, updateObject, walk, findById, type Removed } from '../../shared/phaseform/tree';
 import { checkSceneAgainstProject, validateScene } from '../../shared/phaseform/validate';
 import { useEditorStore } from './store';
@@ -75,7 +76,8 @@ export function relativePath(fullPath: string): string | null {
   return p.toLowerCase().startsWith(base.toLowerCase()) ? p.slice(base.length) : null;
 }
 
-async function dataUrlOf(url: string): Promise<string | undefined> {
+/** An image file of the open project as a data URL (cached), or undefined if it cannot be read. */
+export async function readProjectImage(url: string): Promise<string | undefined> {
   const hit = dataUrls.get(url);
   if (hit) return hit;
   if (!projectFolder) return undefined;
@@ -109,7 +111,7 @@ async function newViewAssets(scene: PfScene, project: PfProject | null): Promise
   await Promise.all(textureAssets(project).filter(a => wanted.has(a.key)).map(async a => {
     if ((a.type !== 'image' && a.type !== 'spritesheet') || typeof a.url !== 'string') return;
     if (viewHas.get(a.key) === `${a.url}|${a.frameWidth}|${a.frameHeight}`) return;
-    const dataUrl = await dataUrlOf(a.url);
+    const dataUrl = await readProjectImage(a.url);
     if (!dataUrl) { missing.push(`Texture file not found: ${a.url} (asset "${a.key}").`); return; }
     const base = { key: a.key, dataUrl };
     assets.push(a.type === 'image' ? { ...base, type: 'image' }
@@ -256,6 +258,42 @@ export function addAsset(asset: PfAsset) {
   if (!project) return;
   set(s => ({ project: { ...project, assets: [...project.assets, asset] }, projectRev: s.projectRev + 1 }));
 }
+
+/** Edits fields of one manifest entry (`undefined` removes a field); the key itself changes through renameAsset. */
+export function updateAsset(key: string, patch: Record<string, unknown>): boolean {
+  const project = get().project && updateAssetFields(get().project!, key, patch);
+  if (!project) return false;
+  set(s => ({ project, projectRev: s.projectRev + 1 }));
+  revalidateSoon();
+  schedulePush(0);
+  return true;
+}
+
+/** Renames an asset and everything in the open scene and the project that refers to it. False if the key is missing or taken. */
+export function renameAsset(oldKey: string, newKey: string): boolean {
+  const { scene, project } = get();
+  const next = project && renameAssetKey(scene, project, oldKey, newKey);
+  if (!next) return false;
+  set(s => ({ scene: next.scene, project: next.project, rev: next.scene === scene ? s.rev : s.rev + 1, projectRev: s.projectRev + 1 }));
+  viewHas.delete(oldKey);
+  revalidateSoon();
+  schedulePush(0);
+  return true;
+}
+
+/** Removes an asset from the manifest. Objects that still use it stay and get a warning; the caller can list them with assetUses first. */
+export function removeAsset(key: string): boolean {
+  const project = get().project && removeAssetKey(get().project!, key);
+  if (!project) return false;
+  set(s => ({ project, projectRev: s.projectRev + 1 }));
+  viewHas.delete(key);
+  revalidateSoon();
+  schedulePush(0);
+  return true;
+}
+
+/** Where the open scene and the project use an asset key. */
+export const usesOfAsset = (key: string): string[] => assetUses(get().scene, get().project, key);
 
 /** Registers a new scene file in the project. */
 export function addSceneEntry(key: string, path: string) {

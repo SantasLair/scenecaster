@@ -8,6 +8,7 @@ import { useHistory } from './history';
 import ObjectsPanel from './components/ObjectsPanel';
 import AssetBrowser from './components/AssetBrowser';
 import FileSystemPanel from './components/FileSystemPanel';
+import ManifestPanel from './components/ManifestPanel';
 import Inspector from './components/Inspector';
 import ProblemsPanel from './components/ProblemsPanel';
 import { ToolBtn, SetupDialog, ScenePicker } from './components/Controls';
@@ -65,7 +66,7 @@ export default function App() {
   });
   const {
     scenes, sceneKey, openScene, openSceneFile, moveObject, canvasSize, selectedObject, lockedIds, toolMode, saveStatus, saveBlocked, sceneStatus, createScene, problems,
-    addObject, dropAsset, setTool, toggleSnap, undo, redo, updateField, commitEdit, selectObject,
+    addObject, dropAsset, updateAssetField, renameAsset, removeAsset, setTool, toggleSnap, undo, redo, updateField, commitEdit, selectObject,
     deleteObject, duplicateObject, renameObject, toggleVisible, toggleLocked, handleSave,
   } = scene;
   const textureKeys = (scene.project?.assets ?? []).filter(a => ['image', 'spritesheet', 'atlas'].includes(a.type)).map(a => a.key);
@@ -167,10 +168,13 @@ export default function App() {
     assets: (
       <AssetBrowser projectFolder={projectFolder} onOpenProject={handleOpenProject} onDragAsset={() => setIsDraggingAsset(true)} />
     ),
+    manifest: (
+      <ManifestPanel project={scene.project} onUpdate={updateAssetField} onCommit={commitEdit} onRename={renameAsset} onRemove={removeAsset} />
+    ),
     inspector: liveUrl ? <LiveInspector live={live} /> : !ui.canvasAvailable ? (
       <Empty text={ui.hasProject ? 'Select a scene to inspect its objects.' : 'Open a project to inspect objects.'} />
     ) : selectedObject ? (
-      <Inspector key={selectedObject.id} object={selectedObject} textureKeys={textureKeys} fontKeys={fontKeys}
+      <Inspector key={selectedObject.id} object={selectedObject} textureKeys={textureKeys} fontKeys={fontKeys} assets={scene.project?.assets ?? []}
         isTopLevel={findById(scene.scene, selectedObject.id)?.parent === null}
         onChange={updateField} onCommit={commitEdit} onDelete={() => deleteObject(selectedObject.id)} />
     ) : (

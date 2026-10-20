@@ -117,6 +117,15 @@ export function useScene({ iframeRef, send, projectFolder, appendLog, showConsol
     if (commit) commitEdit();
   };
 
+  // ---- Editing the project's asset manifest (each change is part of the same undo history as scene edits)
+  const updateAssetField = (key: string, patch: Record<string, unknown>, commit = false) => {
+    beginGesture();
+    model.updateAsset(key, patch);
+    if (commit) commitEdit();
+  };
+  const renameAsset = (oldKey: string, newKey: string) => step(() => model.renameAsset(oldKey, newKey));
+  const removeAsset = (key: string) => step(() => model.removeAsset(key));
+
   const nextId = (base: string) => uniqueId(base, allIds(model.useSceneModel.getState().scene));
 
   /** Adds into `parentId` (null = top level); a top-level object lands at the canvas centre, a child at its parent's origin. */
@@ -459,6 +468,6 @@ export function useScene({ iframeRef, send, projectFolder, appendLog, showConsol
     scene, project, scenes, sceneKey, canvasSize, selectedObject, lockedIds, toolMode, saveStatus, saveBlocked: blocked, sceneStatus, problems,
     openScene, openSceneFile, createScene, createProject, beginProject, endProject,
     setTool, toggleSnap, undo, redo, updateField, commitEdit, selectObject,
-    addObject, dropAsset, deleteObject, duplicateObject, renameObject, toggleVisible, toggleLocked, moveObject, handleSave,
+    addObject, dropAsset, updateAssetField, renameAsset, removeAsset, deleteObject, duplicateObject, renameObject, toggleVisible, toggleLocked, moveObject, handleSave,
   };
 }

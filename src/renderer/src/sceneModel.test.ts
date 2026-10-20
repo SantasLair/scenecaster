@@ -20,7 +20,7 @@ beforeEach(async () => {
   await vi.runAllTimersAsync(); // the initial push
   sent = [];
 });
-afterEach(() => { vi.useRealTimers(); });
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 describe('scene model', () => {
   it('counts a loaded scene as saved and an edit as unsaved', () => {
@@ -72,6 +72,64 @@ describe('scene model', () => {
     model.restore(before);
     expect(ids()).toEqual(['a', 'b']);
     expect(state().project!.assets).toHaveLength(0);
+  });
+
+  describe('asset manifest edits', () => {
+    beforeEach(() => {
+      vi.stubGlobal('window', { electronAPI: { fileToDataUrl: async () => null } }); // textures are read from disk on rebuild
+      model.setProject({
+        ...newProject('Demo', 'Main', 'scenes/main.phaseform.json'),
+        scenes: [{ key: 'Main', path: 'scenes/main.phaseform.json', assets: ['hero', 'font1'] }],
+        assets: [{ key: 'hero', type: 'image', url: 'a/hero.png', note: 'x' }, { key: 'font1', type: 'bitmapFont', url: 'f.png', dataUrl: 'f.xml' }],
+        animations: [{ key: 'walk', frames: [{ key: 'hero', frame: 0 }, { key: 'other' }] }],
+      });
+      model.loadScene({
+        ...newScene('Main'),
+        objects: [
+          img('a'),
+          { id: 'g', type: 'container', children: [{ id: 't', type: 'bitmapText', font: 'font1', text: 'hi' }, { ...img('c'), filters: { internal: [{ type: 'mask', texture: 'hero' }] } }] },
+        ],
+      }, 'scenes/main.phaseform.json', []);
+    });
+
+    it('renames an asset everywhere and keeps unknown fields', () => {
+      const projectBefore = state().project;
+      expect(model.renameAsset('hero', 'knight')).toBe(true);
+      const p = state().project!;
+      expect(p.assets[0]).toEqual({ key: 'knight', type: 'image', url: 'a/hero.png', note: 'x' });
+      expect(p.scenes[0].assets).toEqual(['knight', 'font1']);
+      expect((p.animations![0] as { frames: { key: string }[] }).frames.map(f => f.key)).toEqual(['knight', 'other']);
+      expect(state().scene.objects[0].key).toBe('knight');
+      const c = state().scene.objects[1].children![1];
+      expect(c.key).toBe('knight');
+      expect((c.filters as { internal: { texture: string }[] }).internal[0].texture).toBe('knight');
+      expect(state().scene.objects[1].children![0].font).toBe('font1'); // untouched object keeps identity
+      expect(state().project).not.toBe(projectBefore);
+    });
+
+    it('refuses a rename to a taken, empty or unknown key', () => {
+      expect(model.renameAsset('hero', 'font1')).toBe(false);
+      expect(model.renameAsset('hero', '')).toBe(false);
+      expect(model.renameAsset('nope', 'x')).toBe(false);
+    });
+
+    it('lists the uses of an asset, edits fields and removes it', () => {
+      expect(model.usesOfAsset('hero')).toEqual(['object "a"', 'object "c"', 'animation "walk"', 'scene "Main" preload list']);
+      expect(model.updateAsset('hero', { url: 'b/hero.png', note: undefined, key: 'ignored' })).toBe(true);
+      expect(state().project!.assets[0]).toEqual({ key: 'hero', type: 'image', url: 'b/hero.png' });
+      expect(model.removeAsset('hero')).toBe(true);
+      expect(state().project!.assets.map(a => a.key)).toEqual(['font1']);
+      expect(state().project!.scenes[0].assets).toEqual(['font1']);
+      expect(model.removeAsset('hero')).toBe(false);
+    });
+
+    it('undoes a rename including the scene', () => {
+      const before = model.snapshot();
+      model.renameAsset('hero', 'knight');
+      model.restore(before);
+      expect(state().scene.objects[0].key).toBe('hero');
+      expect(state().project!.assets[0].key).toBe('hero');
+    });
   });
 
   it('keeps fields it does not know and their order', () => {
