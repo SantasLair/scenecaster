@@ -20,12 +20,17 @@ function FileThumb({ file, onDragAsset, viewMode }: {
   file: AssetFile; onDragAsset: (f: AssetFile) => void; viewMode: ViewMode;
 }) {
   const [src, setSrc] = useState<string | null>(null);
+  const isImage = file.kind === 'image';
+  // Audio and data files have no thumbnail and cannot be dropped into the viewport.
+  const glyph = file.kind === 'audio' ? '♪' : file.kind === 'data' ? '{ }' : file.ext.replace('.', '');
+  const hint = isImage ? file.name : `${file.name} (${file.kind === 'audio' ? 'audio' : 'atlas or font data'}: import it, then pick it in Project Assets)`;
 
   useEffect(() => {
+    if (!isImage) return;
     let cancelled = false;
     window.electronAPI.fileToDataUrl(file.fullPath).then(url => { if (!cancelled && url) setSrc(url); });
     return () => { cancelled = true; };
-  }, [file.fullPath]);
+  }, [file.fullPath, isImage]);
 
   const handleDragStart = (e: React.DragEvent) => {
     e.dataTransfer.setData('application/phaser-asset', JSON.stringify({ ...file, dataUrl: src ?? '' }));
@@ -34,12 +39,12 @@ function FileThumb({ file, onDragAsset, viewMode }: {
 
   if (viewMode === 'list') {
     return (
-      <div draggable onDragStart={handleDragStart} title={file.name}
-        className="flex items-center gap-2 px-2 py-1 rounded cursor-grab hover:bg-gray-700 transition-colors group">
+      <div draggable={isImage} onDragStart={handleDragStart} title={hint}
+        className={`flex items-center gap-2 px-2 py-1 rounded ${isImage ? 'cursor-grab' : 'cursor-default'} hover:bg-gray-700 transition-colors group`}>
         <div className="w-6 h-6 flex-shrink-0 rounded overflow-hidden bg-gray-900 border border-gray-700 flex items-center justify-center">
           {src
             ? <img src={src} alt="" className="w-full h-full object-contain" />
-            : <span className="text-gray-600 text-[8px]">{file.ext.replace('.', '')}</span>}
+            : <span className="text-gray-500 text-[9px]">{glyph}</span>}
         </div>
         <span className="text-xs text-gray-300 truncate group-hover:text-white flex-1">{file.name}</span>
       </div>
@@ -50,12 +55,12 @@ function FileThumb({ file, onDragAsset, viewMode }: {
   const sz = isLarge ? 'w-20 h-20' : 'w-12 h-12';
 
   return (
-    <div draggable onDragStart={handleDragStart} title={file.name}
-      className="flex flex-col items-center gap-1 p-1.5 rounded cursor-grab hover:bg-gray-700 transition-colors group">
+    <div draggable={isImage} onDragStart={handleDragStart} title={hint}
+      className={`flex flex-col items-center gap-1 p-1.5 rounded ${isImage ? 'cursor-grab' : 'cursor-default'} hover:bg-gray-700 transition-colors group`}>
       <div className={`${sz} flex-shrink-0 rounded overflow-hidden bg-gray-900 border border-gray-700 flex items-center justify-center`}>
         {src
           ? <img src={src} alt="" className="w-full h-full object-contain" />
-          : <span className="text-gray-600 text-[10px]">{file.ext.replace('.', '')}</span>}
+          : <span className="text-gray-500 text-xs">{glyph}</span>}
       </div>
       <span className={`${isLarge ? 'text-[10px]' : 'text-[9px]'} text-gray-400 group-hover:text-white text-center leading-tight max-w-full`}
         style={{ wordBreak: 'break-all', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>

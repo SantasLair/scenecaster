@@ -182,7 +182,8 @@ function scanAssets(dir: string, base: string): unknown[] {
       if (children.length > 0) results.push({ name: entry.name, type: 'folder', path: relPath, children });
     } else {
       const ext = path.extname(entry.name).toLowerCase();
-      if (IMAGE_EXTS.includes(ext)) results.push({ name: entry.name, type: 'file', path: relPath, fullPath, ext });
+      const kind = importKind(entry.name);
+      if (kind) results.push({ name: entry.name, type: 'file', path: relPath, fullPath, ext, kind });
     }
   }
   return results;

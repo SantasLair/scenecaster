@@ -6,6 +6,8 @@ interface AssetFile {
   path: string;
   fullPath: string;
   ext: string;
+  /** image, audio, or data (atlas json, font xml or fnt). Only images can be dragged into the viewport. */
+  kind: 'image' | 'audio' | 'data';
 }
 
 interface AssetFolder {
