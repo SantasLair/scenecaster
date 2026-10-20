@@ -32,9 +32,13 @@ interface ElectronAPI {
   openFolder: () => Promise<string | null>;
   readAssets: (folder: string) => Promise<AssetEntry[]>;
   fileToDataUrl: (path: string) => Promise<string | null>;
-  /** The assets folder (project-relative); `exists` is false when `dir` is only where one would be created. Null outside a project. */
+  /** Watches the assets folder; an empty string stops. False if there is nothing to watch. */
+  watchAssets: (folder: string) => Promise<boolean>;
+  /** Fires (debounced) when files in the assets folder change; returns an unsubscribe function. */
+  onAssetsChanged: (cb: () => void) => () => void;
   /** Which of these project-relative files do not exist. */
   missingAssetFiles: (folder: string, relPaths: string[]) => Promise<string[]>;
+  /** The assets folder (project-relative); `exists` is false when `dir` is only where one would be created. Null outside a project. */
   assetsInfo: (folder: string) => Promise<{ dir: string; exists: boolean } | null>;
   /** Opens the system file picker and returns the chosen paths (empty if cancelled). */
   pickAssets: () => Promise<string[]>;

@@ -124,6 +124,9 @@ export default function AssetBrowser({ projectFolder, onOpenProject, onDragAsset
     return () => { cancelled = true; };
   }, [projectFolder, reload]);
 
+  // Files added, removed or renamed outside the editor (a file manager, git, an AI) show up without a manual refresh.
+  useEffect(() => window.electronAPI.onAssetsChanged(() => setReload(n => n + 1)), []);
+
   const startDivResize = (e: React.MouseEvent) => {
     const w0 = leftW;
     beginDrag(e, 'ew-resize', dx => setLeftW(clamp(w0 + dx, 80, 280)));

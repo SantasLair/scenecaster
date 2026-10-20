@@ -173,6 +173,11 @@ export default function ManifestPanel({ project, onUpdate, onCommit, onRename, o
   const [report, setReport] = useState<AssetReport | null>(null);
   const [checking, setChecking] = useState(false);
   const runCheck = async () => { setChecking(true); try { setReport(await onCheck()); } finally { setChecking(false); } };
+  // Once a report is showing, keep it current when files in the assets folder change.
+  const rerun = useRef(runCheck);
+  rerun.current = runCheck;
+  const showing = report !== null;
+  useEffect(() => (showing ? window.electronAPI.onAssetsChanged(() => { void rerun.current(); }) : undefined), [showing]);
   const assets = project?.assets ?? [];
   const asset = assets.find(a => a.key === selected) ?? null;
 

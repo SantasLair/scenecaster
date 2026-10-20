@@ -232,6 +232,7 @@ export function useScene({ iframeRef, send, projectFolder, appendLog, showConsol
         model.addAsset({ key: suggestKey(p.fileName, keys, String(p.entry.type)), ...p.entry } as PfAsset);
       }
     });
+    if (copied.length) void api.watchAssets(projectFolder); // the folder may have just been created
     if (copied.length) note(`Imported ${copied.length} file${copied.length === 1 ? '' : 's'} into ${destRel}.`);
     return copied.map(x => x.rel!);
   };
@@ -401,6 +402,12 @@ export function useScene({ iframeRef, send, projectFolder, appendLog, showConsol
     void api.watchFiles(projectFolder, scenePath ? [PROJECT_FILE, scenePath] : [PROJECT_FILE]);
     return api.onFileChanged(rel => { void reloadFromDisk.current(rel); });
   }, [projectFolder, scenePath, reloadFromDisk]);
+
+  // The page re-reads the assets folder when this fires (AssetBrowser and the Check assets report listen for it).
+  useEffect(() => {
+    void api.watchAssets(projectFolder ?? '');
+    return () => { void api.watchAssets(''); };
+  }, [projectFolder]);
 
   const resetEditing = () => { gestureRef.current = null; history.clear(); select(null); };
 

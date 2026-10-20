@@ -133,7 +133,7 @@ Step 1 does not depend on Phase 2 and can go first for a quick visible win. Godo
 - [ ] **M** **Manifest in `phaseform.project.json`**: key, type, url, frame config. Keys are auto-suggested from the file name and editable. (This replaces the old `scenecaster/assets.json`.)
 - [ ] **S** Rename or move an asset: update the manifest and every scene file, and **list code references** (grep) for the human or AI to fix. It does not edit code.
 - [x] **S** Delete asset with a usage check (done: the Remove confirmation lists uses in the open scene, the project and every other scene file; the Project Assets panel has a "Check assets" report of unused entries and entries whose files are missing); unused and missing asset report; optional size warnings.
-- [ ] **S** Watch the assets folder.
+- [x] **S** Watch the assets folder: the Assets tab and an open "Check assets" report refresh when files are added, removed or renamed outside the editor (`fs.watch` on the assets folder, debounced; the FileSystem panel still refreshes on F5 or focus).
 
 ### Phase 5: Hand-off to code and adopting existing projects (rebased onto the toolkit)
 > Make it trivial for an AI to use the project file and scenes, and to convert an existing game. The toolkit already provides a loader, schemas, a CLI and a Vite plugin.

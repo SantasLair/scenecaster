@@ -10,6 +10,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   findFiles: (dir: string, query: string) => ipcRenderer.invoke('fs:findFiles', dir, query),
   showItem: (path: string) => ipcRenderer.invoke('shell:showItem', path),
   fileToDataUrl: (path: string) => ipcRenderer.invoke('fs:fileToDataUrl', path),
+  /** Watches the assets folder; pass an empty string to stop. Resolves false if there is nothing to watch. */
+  watchAssets: (folder: string) => ipcRenderer.invoke('assets:watch', folder),
+  /** Fires (debounced) when files in the assets folder change. Returns an unsubscribe function. */
+  onAssetsChanged: (cb: () => void) => {
+    const listener = () => cb();
+    ipcRenderer.on('assets:changed', listener);
+    return () => { ipcRenderer.removeListener('assets:changed', listener); };
+  },
   missingAssetFiles: (folder: string, relPaths: string[]) => ipcRenderer.invoke('assets:missing', folder, relPaths),
   assetsInfo: (folder: string) => ipcRenderer.invoke('assets:info', folder),
   pickAssets: () => ipcRenderer.invoke('assets:pick'),

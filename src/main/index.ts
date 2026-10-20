@@ -90,6 +90,33 @@ function startFileWatch(files: Map<string, Watched>) {
   }, WATCH_POLL_MS) };
 }
 
+/**
+ * Tells the page when files in the assets folder are added, removed or renamed. Unlike the scene files above this uses
+ * fs.watch: it only has to say "something changed" (the page re-reads the folder), so replaced files are not a problem.
+ */
+const ASSETS_DEBOUNCE_MS = 300;
+let assetsWatch: { watcher: fs.FSWatcher; timer: NodeJS.Timeout | null } | null = null;
+function stopAssetsWatch() {
+  if (!assetsWatch) return;
+  if (assetsWatch.timer) clearTimeout(assetsWatch.timer);
+  try { assetsWatch.watcher.close(); } catch { /* already closed */ }
+  assetsWatch = null;
+}
+function startAssetsWatch(root: string): boolean {
+  stopAssetsWatch();
+  try {
+    const state: NonNullable<typeof assetsWatch> = { watcher: fs.watch(root, { recursive: true }, () => {
+      if (state.timer) clearTimeout(state.timer);
+      state.timer = setTimeout(() => { state.timer = null; sendToRenderer('assets:changed'); }, ASSETS_DEBOUNCE_MS);
+    }), timer: null };
+    state.watcher.on('error', () => { if (assetsWatch === state) stopAssetsWatch(); });
+    assetsWatch = state;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
 const toPosix = (p: string) => p.replace(/\\/g, '/');
 const sendToRenderer = (channel: string, ...args: unknown[]) => mainWin?.webContents.send(channel, ...args);
@@ -373,6 +400,15 @@ app.whenReady().then(() => {
   ipcMain.handle('assets:info', (_e, rawFolder: unknown) => {
     const folder = guardFolder(rawFolder);
     return folder ? assetsInfo(folder) : null;
+  });
+
+  /** Watches the project's assets folder (replacing any earlier watch); an invalid folder or no assets folder just stops watching. */
+  ipcMain.handle('assets:watch', (_e, rawFolder: unknown): boolean => {
+    stopAssetsWatch();
+    const folder = guardFolder(rawFolder);
+    if (!folder) return false;
+    const info = assetsInfo(folder);
+    return info.exists ? startAssetsWatch(path.join(folder, ...info.dir.split('/'))) : false;
   });
 
   /** Which of these project-relative files are not on disk (a path that leaves the project counts as missing). */
