@@ -3,6 +3,7 @@ import type React from 'react';
 import type { PfObject } from '../../../shared/phaseform/types';
 import { isContainer } from '../../../shared/phaseform/types';
 import { labelOf, walk } from '../../../shared/phaseform/tree';
+import Icon from './Icon';
 
 export type AddKind = 'container' | 'rectangle' | 'ellipse' | 'triangle' | 'text';
 
@@ -82,13 +83,8 @@ function Arrow({ open }: { open: boolean }) {
   );
 }
 
-const s = { width: 13, height: 13, viewBox: '0 0 16 16', fill: 'none', stroke: 'currentColor', strokeWidth: 1.4, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
-const EyeIcon = ({ off }: { off: boolean }) => off
-  ? <svg {...s}><path d="M2 8s2.500-4.500 6-4.500S14 8 14 8s-2.500 4.500-6 4.500S2 8 2 8z" /><path d="M3 13L13 3" /></svg>
-  : <svg {...s}><path d="M2 8s2.500-4.500 6-4.500S14 8 14 8s-2.500 4.500-6 4.500S2 8 2 8z" /><circle cx="8" cy="8" r="1.800" /></svg>;
-const LockIcon = ({ on }: { on: boolean }) => on
-  ? <svg {...s}><rect x="3.500" y="7" width="9" height="6.500" rx="1" /><path d="M5.500 7V5a2.500 2.500 0 015 0v2" /></svg>
-  : <svg {...s}><rect x="3.500" y="7" width="9" height="6.500" rx="1" /><path d="M5.500 7V5a2.500 2.500 0 014.800-1" /></svg>;
+const EyeIcon = ({ off }: { off: boolean }) => <Icon name={off ? 'GuiVisibilityHidden' : 'GuiVisibilityVisible'} size={14} />;
+const LockIcon = ({ on }: { on: boolean }) => <Icon name={on ? 'Lock' : 'Unlock'} size={14} />;
 
 // ---------------------------------------------------------------- rows
 

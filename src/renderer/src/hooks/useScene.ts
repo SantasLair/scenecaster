@@ -21,16 +21,17 @@ import { allProblems, useSceneModel } from '../sceneModel';
 import { useLatest } from './useLatest';
 
 type ShortcutKey = Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey' | 'shiftKey'>;
+import type { IconName } from '../components/Icon';
 export type SaveStatus = 'saved' | 'unsaved' | 'saving';
 export type BeginResult = 'ready' | 'needs-setup';
 
 const api = window.electronAPI;
 
-export const TOOLS: { mode: ToolMode; icon: string; label: string; key: string }[] = [
-  { mode: 'select', icon: '↖', label: 'Select (Q)', key: 'q' },
-  { mode: 'move', icon: '✥', label: 'Move (W)', key: 'w' },
-  { mode: 'rotate', icon: '↻', label: 'Rotate (E)', key: 'e' },
-  { mode: 'scale', icon: '⤢', label: 'Scale (R)', key: 'r' },
+export const TOOLS: { mode: ToolMode; icon: IconName; label: string; key: string }[] = [
+  { mode: 'select', icon: 'ToolSelect', label: 'Select (Q)', key: 'q' },
+  { mode: 'move', icon: 'ToolMove', label: 'Move (W)', key: 'w' },
+  { mode: 'rotate', icon: 'ToolRotate', label: 'Rotate (E)', key: 'e' },
+  { mode: 'scale', icon: 'ToolScale', label: 'Scale (R)', key: 'r' },
 ];
 
 const isTyping = (t: EventTarget | null) =>

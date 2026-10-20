@@ -13,6 +13,7 @@ import AnimationsPanel from './components/AnimationsPanel';
 import ManifestPanel from './components/ManifestPanel';
 import Inspector from './components/Inspector';
 import ProblemsPanel from './components/ProblemsPanel';
+import Icon from './components/Icon';
 import ThemeDialog from './components/ThemeDialog';
 import ProjectPanel from './components/ProjectPanel';
 import { ToolBtn, SetupDialog, ScenePicker } from './components/Controls';
@@ -258,7 +259,7 @@ export default function App() {
 
         <button onClick={handleOpenProject} title={projectFolder ?? 'Open Project Folder'}
           className="flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs text-gray-400 hover:bg-gray-700 hover:text-white border border-gray-700 transition-all max-w-40 mr-1">
-          📁 <span className="truncate hidden lg:inline">{projectFolder ? projectFolder.split(/[\\/]/).pop() : 'Open Project'}</span>
+          <Icon name="Folder" /> <span className="truncate hidden lg:inline">{projectFolder ? projectFolder.split(/[\\/]/).pop() : 'Open Project'}</span>
         </button>
 
         {projectFolder && (
@@ -268,7 +269,7 @@ export default function App() {
         )}
 
         {projectFolder && <button onClick={handleCloseProject} title="Close Project"
-          className="px-2 py-1.5 rounded text-xs text-gray-400 hover:bg-gray-700 hover:text-white border border-gray-700 mr-1">✕ <span className="hidden xl:inline">Close</span></button>}
+          className="px-2 py-1.5 rounded text-xs text-gray-400 hover:bg-gray-700 hover:text-white border border-gray-700 mr-1"><Icon name="GuiClose" /> <span className="hidden xl:inline">Close</span></button>}
 
         {projectFolder && !liveUrl && (
           <ScenePicker scenes={scenes} current={sceneKey} hasFile={sceneStatus === 'open' || sceneStatus === 'blocked'}
@@ -288,17 +289,17 @@ export default function App() {
         <button onClick={toggleSnap} title="Snap to Grid" disabled={!ui.canEditScene}
           className={`flex items-center gap-1 px-2.5 py-1.5 rounded text-xs font-medium border transition-all ${
             snapEnabled ? 'border-blue-500 bg-blue-900/40 text-blue-300' : 'border-gray-700 text-gray-400 hover:bg-gray-700'} disabled:opacity-40 disabled:pointer-events-none`}>
-          ⊞ <span className="hidden xl:inline">Snap</span>
+          <Icon name="Snap" /> <span className="hidden xl:inline">Snap</span>
         </button>
 
         <button onClick={() => send({ type: 'RESET_CAMERA' })} title="Reset Camera View (F)" disabled={!ui.canEditScene}
           className="flex items-center gap-1 px-2.5 py-1.5 rounded text-xs font-medium border border-gray-700 text-gray-400 hover:bg-gray-700 transition-all ml-0.5 disabled:opacity-40 disabled:pointer-events-none">
-          ⌂ <span className="hidden xl:inline">Reset View</span>
+          <Icon name="Reload" /> <span className="hidden xl:inline">Reset View</span>
         </button>
 
         <div className="flex items-center gap-0.5 ml-1">
-          <ToolBtn icon="↩" label="Undo" disabled={!canUndo || !ui.canEditScene} onClick={undo} />
-          <ToolBtn icon="↪" label="Redo" disabled={!canRedo || !ui.canEditScene} onClick={redo} />
+          <ToolBtn icon="UndoRedo" label="Undo" disabled={!canUndo || !ui.canEditScene} onClick={undo} />
+          <ToolBtn icon="UndoRedo" flipX label="Redo" disabled={!canRedo || !ui.canEditScene} onClick={redo} />
         </div>
 
         <div className="flex-1" />
@@ -327,17 +328,17 @@ export default function App() {
           </select>
         )}
         <ToolBtn
-          icon={dev.status === 'running' ? '⏹' : dev.status === 'starting' ? '⏳' : '▶'}
+          icon={dev.status === 'running' ? 'Stop' : dev.status === 'starting' ? 'Reload' : 'Play'}
           label={dev.status === 'running' ? 'Stop' : dev.status === 'starting' ? 'Starting…' : 'Run Game'}
           onClick={handleRunStop}
           disabled={!ui.canRun || dev.status === 'starting'}
           extra={dev.status === 'running' ? 'text-red-400' : dev.status === 'error' ? 'text-orange-400' : 'text-green-400'}
         />
         {liveUrl && <LiveModeToggle live={live} />}
-        <ToolBtn icon="⌨" label="VS Code" onClick={() => projectFolder && api.openVSCode(projectFolder)} disabled={!ui.canRun} />
-        <ToolBtn icon="💾" label="Save (Ctrl+S)" onClick={handleSave} disabled={!ui.canSave || saveBlocked} />
-        <ToolBtn icon="🎨" label="Theme" onClick={() => setThemeOpen(true)} />
-        <ToolBtn icon="▦" label="Reset layout" onClick={() => resetLayout(dockRef.current)} />
+        <ToolBtn icon="Script" label="VS Code" onClick={() => projectFolder && api.openVSCode(projectFolder)} disabled={!ui.canRun} />
+        <ToolBtn icon="Save" label="Save (Ctrl+S)" onClick={handleSave} disabled={!ui.canSave || saveBlocked} />
+        <ToolBtn icon="Environment" label="Theme" onClick={() => setThemeOpen(true)} />
+        <ToolBtn icon="Window" label="Reset layout" onClick={() => resetLayout(dockRef.current)} />
       </header>
 
       <div className="flex-1 min-h-0">

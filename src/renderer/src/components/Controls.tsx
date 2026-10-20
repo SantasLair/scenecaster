@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { isSceneKey } from '../../../shared/phaseform/format';
+import Icon, { type IconName } from './Icon';
 
 interface FieldProps {
   label: string;
@@ -42,8 +43,8 @@ export function InspectorField({ label, value, type = 'number', min, max, step =
   );
 }
 
-export function ToolBtn({ icon, label, active, onClick, disabled, extra = '' }: {
-  icon: string; label: string; active?: boolean; onClick: () => void; disabled?: boolean; extra?: string;
+export function ToolBtn({ icon, label, flipX, active, onClick, disabled, extra = '' }: {
+  icon: IconName; label: string; flipX?: boolean; active?: boolean; onClick: () => void; disabled?: boolean; extra?: string;
 }) {
   return (
     <button title={label} onClick={onClick} disabled={disabled}
@@ -51,7 +52,7 @@ export function ToolBtn({ icon, label, active, onClick, disabled, extra = '' }: 
         active ? 'bg-blue-600 text-white shadow-[0_0_10px_rgba(59,130,246,0.4)]'
           : 'text-gray-300 hover:bg-gray-700 hover:text-white'
       } ${extra}`}>
-      <span>{icon}</span><span className="hidden xl:inline">{label}</span>
+      <Icon name={icon} flipX={flipX} /><span className="hidden xl:inline">{label}</span>
     </button>
   );
 }
