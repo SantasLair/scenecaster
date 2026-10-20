@@ -32,6 +32,16 @@ interface ElectronAPI {
   openFolder: () => Promise<string | null>;
   readAssets: (folder: string) => Promise<AssetEntry[]>;
   fileToDataUrl: (path: string) => Promise<string | null>;
+  /** The assets folder (project-relative); `exists` is false when `dir` is only where one would be created. Null outside a project. */
+  assetsInfo: (folder: string) => Promise<{ dir: string; exists: boolean } | null>;
+  /** Opens the system file picker and returns the chosen paths (empty if cancelled). */
+  pickAssets: () => Promise<string[]>;
+  /** Copies files into a project subfolder without overwriting; a taken name gets -2, -3... */
+  importAssets: (folder: string, destRel: string, sources: string[]) => Promise<{
+    ok: boolean; error?: string; results?: { name: string; kind?: 'image' | 'audio' | 'data'; rel?: string; error?: string }[];
+  }>;
+  /** The disk path of a file dropped from the operating system. */
+  pathForFile: (file: File) => string;
   /** null: the folder is outside the opened project or cannot be read. */
   listDir: (dir: string) => Promise<FsEntry[] | null>;
   findFiles: (dir: string, query: string) => Promise<FsEntry[]>;

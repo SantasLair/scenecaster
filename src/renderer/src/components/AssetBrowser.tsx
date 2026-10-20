@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import type React from 'react';
 import { beginDrag, clamp } from '../beginDrag';
+import { cleanSubfolder } from '../../../shared/assetImport';
 
 type ViewMode = 'list' | 'grid-sm' | 'grid-lg';
 
@@ -11,6 +12,8 @@ interface Props {
   projectFolder: string | null;
   onOpenProject: () => void;
   onDragAsset: (file: AssetFile) => void;
+  /** Copies files into the project folder `destRel` and registers them; resolves with the copied paths. */
+  onImport: (sources: string[], destRel: string) => Promise<string[]>;
 }
 
 function FileThumb({ file, onDragAsset, viewMode }: {
@@ -91,7 +94,7 @@ function FolderNode({ folder, selectedPath, onSelect, depth }: {
   );
 }
 
-export default function AssetBrowser({ projectFolder, onOpenProject, onDragAsset }: Props) {
+export default function AssetBrowser({ projectFolder, onOpenProject, onDragAsset, onImport }: Props) {
   const [assets, setAssets] = useState<AssetEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
@@ -99,20 +102,27 @@ export default function AssetBrowser({ projectFolder, onOpenProject, onDragAsset
   const [selectedFolder, setSelectedFolder] = useState<AssetFolder | null>(null);
 
   const [leftW, setLeftW] = useState(140);
+  const [assetsDir, setAssetsDir] = useState('assets');
+  const [subfolder, setSubfolder] = useState('');
+  const [reload, setReload] = useState(0);
+  const [overDrop, setOverDrop] = useState(false);
+  const [importing, setImporting] = useState(false);
+
+  useEffect(() => { setSelectedFolder(null); }, [projectFolder]);
 
   useEffect(() => {
-    setSelectedFolder(null);
     if (!projectFolder) {
       setAssets([]);
       return;
     }
     let cancelled = false;
     setLoading(true);
+    void window.electronAPI.assetsInfo(projectFolder).then(info => { if (!cancelled && info) setAssetsDir(info.dir); });
     window.electronAPI.readAssets(projectFolder)
       .then(result => { if (!cancelled) setAssets(result); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [projectFolder]);
+  }, [projectFolder, reload]);
 
   const startDivResize = (e: React.MouseEvent) => {
     const w0 = leftW;
@@ -141,6 +151,17 @@ export default function AssetBrowser({ projectFolder, onOpenProject, onDragAsset
     ? flatFiles(assets).filter(f => f.name.toLowerCase().includes(search.toLowerCase()))
     : null;
 
+  // Imports go to the assets folder, plus the folder selected in the tree, plus an optional typed subfolder.
+  const sub = cleanSubfolder(subfolder);
+  const destRel = [assetsDir, selectedFolder?.path, sub].filter(Boolean).join('/');
+  const runImport = async (sources: string[]) => {
+    if (!sources.length || sub === null || importing) return;
+    setImporting(true);
+    try { if ((await onImport(sources, destRel)).length) setReload(n => n + 1); } finally { setImporting(false); }
+  };
+  const pick = async () => runImport(await window.electronAPI.pickAssets());
+  const isFileDrag = (e: React.DragEvent) => e.dataTransfer.types.includes('Files');
+
   const ViewBtn = ({ mode, icon, title }: { mode: ViewMode; icon: string; title: string }) => (
     <button onClick={() => setViewMode(mode)} title={title}
       className={`px-1.5 py-1 rounded text-xs transition-colors ${
@@ -150,7 +171,29 @@ export default function AssetBrowser({ projectFolder, onOpenProject, onDragAsset
   );
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+    <div className="relative flex-1 flex flex-col overflow-hidden min-w-0"
+      onDragOver={e => { if (isFileDrag(e)) { e.preventDefault(); setOverDrop(true); } }}
+      onDragLeave={e => { if (e.currentTarget === e.target) setOverDrop(false); }}
+      onDrop={e => {
+        if (!isFileDrag(e)) return;
+        e.preventDefault(); setOverDrop(false);
+        void runImport(Array.from(e.dataTransfer.files).map(f => window.electronAPI.pathForFile(f)).filter(Boolean));
+      }}>
+      {overDrop && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-blue-950/70 border-2 border-dashed border-blue-500 pointer-events-none">
+          <span className="text-xs text-blue-200">Drop to import into {destRel}</span>
+        </div>
+      )}
+      <div className="px-2 py-1 border-b border-gray-700 flex items-center gap-2 flex-shrink-0 text-[11px] text-gray-500">
+        <button onClick={pick} disabled={importing || sub === null} title="Copy image, audio or data files into the project"
+          className="px-2 py-0.5 rounded text-xs border border-gray-600 text-gray-200 hover:border-blue-500 hover:text-white disabled:opacity-40 flex-shrink-0">
+          {importing ? 'Importing…' : 'Import…'}
+        </button>
+        <span className="truncate" title={destRel}>into {assetsDir}{selectedFolder ? `/${selectedFolder.path}` : ''}/</span>
+        <input value={subfolder} onChange={e => setSubfolder(e.target.value)} placeholder="new subfolder (optional)" spellCheck={false}
+          className={`w-40 min-w-0 bg-gray-900 border rounded px-1.5 py-0.5 text-xs text-gray-200 focus:outline-none focus:border-blue-500 placeholder-gray-600 ${sub === null ? 'border-red-600' : 'border-gray-700'}`} />
+        <span className="text-gray-600 hidden xl:inline">or drop files here</span>
+      </div>
       <div className="px-2 py-1.5 border-b border-gray-700 flex items-center gap-2 flex-shrink-0">
         <input value={search} onChange={e => setSearch(e.target.value)}
           placeholder="Search assets…"

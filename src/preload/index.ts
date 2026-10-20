@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 
 contextBridge.exposeInMainWorld('electronAPI', {
   // Folder
@@ -10,6 +10,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   findFiles: (dir: string, query: string) => ipcRenderer.invoke('fs:findFiles', dir, query),
   showItem: (path: string) => ipcRenderer.invoke('shell:showItem', path),
   fileToDataUrl: (path: string) => ipcRenderer.invoke('fs:fileToDataUrl', path),
+  assetsInfo: (folder: string) => ipcRenderer.invoke('assets:info', folder),
+  pickAssets: () => ipcRenderer.invoke('assets:pick'),
+  importAssets: (folder: string, destRel: string, sources: string[]) => ipcRenderer.invoke('assets:import', folder, destRel, sources),
+  /** The disk path of a file dropped from the operating system. */
+  pathForFile: (file: File) => webUtils.getPathForFile(file),
 
   // Project scripts
   readProjectScripts: (folder: string) => ipcRenderer.invoke('project:readScripts', folder),

@@ -11,6 +11,7 @@ import type { PfAnimation } from '../../../shared/phaseform/animations';
 import { PROJECT_FILE, formatJson, isSceneKey, newProject, scenePathFor } from '../../../shared/phaseform/format';
 import { allIds, cloneWithNewIds, findById, uniqueId } from '../../../shared/phaseform/tree';
 import { checkSceneAgainstProject, validateProject, validateScene } from '../../../shared/phaseform/validate';
+import { suggestKey } from '../../../shared/assetImport';
 import { ADD_LABELS, createImage, createObject, type AddKind } from '../newObjects';
 import * as history from '../history';
 import * as model from '../sceneModel';
@@ -158,9 +159,7 @@ export function useScene({ iframeRef, send, projectFolder, appendLog, showConsol
     step(() => {
       let asset = state.project!.assets.find(a => a.url === url && (a.type === 'image' || a.type === 'spritesheet'));
       if (!asset) {
-        const keys = new Set(state.project!.assets.map(a => a.key));
-        const key = (() => { const b = file.name.replace(/\.[^.]+$/, '').replace(/[^\w-]+/g, '_') || 'image'; if (!keys.has(b)) return b; for (let i = 2; ; i++) if (!keys.has(`${b}_${i}`)) return `${b}_${i}`; })();
-        asset = { key: key, type: 'image', url };
+        asset = { key: suggestKey(file.name, state.project!.assets.map(a => a.key), 'image'), type: 'image', url };
         model.addAsset(asset);
       }
       const obj = createImage(nextId(asset.key), asset.key, Math.round(at?.x ?? sc.size.width / 2), Math.round(at?.y ?? sc.size.height / 2));
@@ -169,6 +168,36 @@ export function useScene({ iframeRef, send, projectFolder, appendLog, showConsol
     });
     const id = useEditorStore.getState().selectedId;
     if (id) send({ type: 'SELECT_OBJECT', id });
+  };
+
+  /**
+   * Copies files into the project folder `destRel` and registers each image and audio file in the manifest (one undo step).
+   * Data files (atlas json, font xml) are only copied: they belong to an image, which the Project Assets panel links them to.
+   * Returns the project-relative paths that were copied.
+   */
+  const importAssets = async (sources: string[], destRel: string): Promise<string[]> => {
+    const note = (text: string) => appendLog(`\n[${text}]\n`);
+    if (!projectFolder || !useSceneModel.getState().project) {
+      note('Open or create a scene before importing: the asset list lives in the project file.');
+      showConsole();
+      return [];
+    }
+    const r = await api.importAssets(projectFolder, destRel, sources);
+    if (!r.ok || !r.results) { note(`Import failed: ${r.error ?? 'unknown error'}`); showConsole(); return []; }
+    const failed = r.results.filter(x => x.error);
+    for (const x of failed) note(`Cannot import "${x.name}": ${x.error}`);
+    if (failed.length) showConsole();
+    const copied = r.results.filter(x => x.rel && x.kind);
+    step(() => {
+      for (const x of copied) {
+        if (x.kind === 'data') continue;
+        const keys = (useSceneModel.getState().project?.assets ?? []).map(a => a.key);
+        const key = suggestKey(x.name, keys, x.kind);
+        model.addAsset(x.kind === 'audio' ? { key, type: 'audio', urls: [x.rel!] } : { key, type: 'image', url: x.rel! });
+      }
+    });
+    if (copied.length) note(`Imported ${copied.length} file${copied.length === 1 ? '' : 's'} into ${destRel}.`);
+    return copied.map(x => x.rel!);
   };
 
   /** Drop at iframe pixels: the viewport converts them to scene coordinates and answers with DROP_LOCATED. */
@@ -478,6 +507,6 @@ export function useScene({ iframeRef, send, projectFolder, appendLog, showConsol
     scene, project, scenes, sceneKey, canvasSize, selectedObject, lockedIds, toolMode, saveStatus, saveBlocked: blocked, sceneStatus, problems,
     openScene, openSceneFile, createScene, createProject, beginProject, endProject,
     setTool, toggleSnap, undo, redo, updateField, commitEdit, selectObject,
-    addObject, dropAsset, updateAssetField, renameAsset, removeAsset, addAnimation, updateAnimationField, renameAnimation, removeAnimation, deleteObject, duplicateObject, renameObject, toggleVisible, toggleLocked, moveObject, handleSave,
+    addObject, dropAsset, importAssets, updateAssetField, renameAsset, removeAsset, addAnimation, updateAnimationField, renameAnimation, removeAnimation, deleteObject, duplicateObject, renameObject, toggleVisible, toggleLocked, moveObject, handleSave,
   };
 }

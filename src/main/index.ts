@@ -3,6 +3,7 @@ import { spawn, ChildProcess } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { PROJECT_DIR, EDITOR_FILE } from '../shared/layout';
+import { AUDIO_EXTS, DATA_EXTS, IMAGE_EXTS as IMPORT_IMAGE_EXTS, ASSET_FOLDER_CANDIDATES, cleanFileName, cleanSubfolder, detectAssetsFolder, importKind, uniqueFileName, type ImportKind } from '../shared/assetImport';
 
 const IS_WIN = process.platform === 'win32';
 const IMAGE_EXTS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'];
@@ -366,15 +367,69 @@ app.whenReady().then(() => {
     return { ok: true, entry: toPosix(path.relative(folder, entry)), importPath: importPath.startsWith('.') ? importPath : `./${importPath}` };
   });
 
+  /** The project's assets folder, found among public/assets, assets and public (symlinks that leave the project do not count). */
+  const assetsInfo = (folder: string) => detectAssetsFolder(rel => guardFolder(path.join(folder, ...rel.split('/'))) !== null);
+
+  ipcMain.handle('assets:info', (_e, rawFolder: unknown) => {
+    const folder = guardFolder(rawFolder);
+    return folder ? assetsInfo(folder) : null;
+  });
+
   ipcMain.handle('fs:readAssets', (_e, rawFolder: unknown) => {
     const folder = guardFolder(rawFolder);
     if (!folder) return [];
-    const assetsPath = path.join(folder, 'assets');
-    const assetsDir = guardFolder(assetsPath);
-    // An `assets` link that escapes the project means no assets, not a scan of the whole project.
-    if (!assetsDir && fs.existsSync(assetsPath)) return [];
-    const root = assetsDir ?? folder;
+    const info = assetsInfo(folder);
+    // A candidate folder that exists but escapes the project (a link) means no assets, not a scan of the whole project.
+    if (!info.exists && ASSET_FOLDER_CANDIDATES.some(c => fs.existsSync(path.join(folder, ...c.split('/'))))) return [];
+    const root = info.exists ? path.join(folder, ...info.dir.split('/')) : folder;
     return scanAssets(root, root);
+  });
+
+  /** The file picker for importing. The paths come from the system dialog, run here, not from the page. */
+  ipcMain.handle('assets:pick', async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openFile', 'multiSelections'],
+      title: 'Import assets into the project',
+      filters: [
+        { name: 'Images and audio', extensions: [...IMPORT_IMAGE_EXTS, ...AUDIO_EXTS].map(e => e.slice(1)) },
+        { name: 'Atlas and font data', extensions: DATA_EXTS.map(e => e.slice(1)) },
+      ],
+    });
+    return result.canceled ? [] : result.filePaths;
+  });
+
+  const MAX_IMPORT_FILES = 200;
+  const MAX_IMPORT_BYTES = 200 * 1024 * 1024;
+  type ImportResult = { name: string; kind?: ImportKind; rel?: string; error?: string };
+
+  /** Copies files into a project subfolder, never overwriting: a name that is taken gets -2, -3... The page cannot choose a destination outside the project. */
+  ipcMain.handle('assets:import', (_e, rawFolder: unknown, rawDest: unknown, rawSources: unknown): { ok: boolean; error?: string; results?: ImportResult[] } => {
+    const folder = guardFolder(rawFolder);
+    const sub = typeof rawDest === 'string' ? cleanSubfolder(rawDest) : null;
+    if (!folder || !sub || !Array.isArray(rawSources)) return BAD_PATH;
+    const dest = guardPath(path.join(folder, ...sub.split('/')));
+    if (!dest) return BAD_PATH;
+    try { fs.mkdirSync(dest, { recursive: true }); } catch (e) { return { ok: false, error: `Cannot create ${sub}: ${(e as Error).message}` }; }
+    const taken = new Set(fs.readdirSync(dest));
+    const results: ImportResult[] = [];
+    for (const src of rawSources.slice(0, MAX_IMPORT_FILES)) {
+      const base = typeof src === 'string' ? path.basename(src) : '?';
+      const fail = (error: string) => results.push({ name: base, error });
+      if (typeof src !== 'string' || !path.isAbsolute(src) || src.includes('\0')) { fail('Not a file path.'); continue; }
+      const kind = importKind(base);
+      if (!kind) { fail('Not an image, audio or data file.'); continue; }
+      try {
+        const st = fs.statSync(src);
+        if (!st.isFile()) { fail('Not a file.'); continue; }
+        if (st.size > MAX_IMPORT_BYTES) { fail('Larger than 200 MB.'); continue; }
+        const name = uniqueFileName(cleanFileName(base), taken);
+        const target = path.join(dest, name);
+        fs.copyFileSync(src, target, fs.constants.COPYFILE_EXCL);
+        taken.add(name);
+        results.push({ name, kind, rel: toPosix(path.relative(folder, target)) });
+      } catch (e) { fail((e as Error).message); }
+    }
+    return { ok: true, results };
   });
 
   /** Names the FileSystem panel never shows: VCS and tool folders, build output, dependency folders and dot-files. */
