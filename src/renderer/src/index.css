@@ -1,7 +1,4 @@
 @import "tailwindcss";
-@import "@fontsource-variable/inter";
-@import "@fontsource/jetbrains-mono/400.css";
-@import "@fontsource/jetbrains-mono/500.css";
 
 /*
  * Colours come from theme/godotTheme.ts, which derives Godot-style surfaces, fonts and an accent from a base colour,

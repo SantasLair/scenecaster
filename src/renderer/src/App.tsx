@@ -269,7 +269,7 @@ export default function App() {
         )}
 
         {projectFolder && <button onClick={handleCloseProject} title="Close Project"
-          className="px-2 py-1.5 rounded text-xs text-gray-400 hover:bg-gray-700 hover:text-white border border-gray-700 mr-1"><Icon name="GuiClose" /> <span className="hidden xl:inline">Close</span></button>}
+          className="px-2 py-1.5 rounded text-xs text-gray-400 hover:bg-gray-700 hover:text-white border border-gray-700 mr-1"><Icon name="GuiClose" /> <span className="hidden 2xl:inline">Close</span></button>}
 
         {projectFolder && !liveUrl && (
           <ScenePicker scenes={scenes} current={sceneKey} hasFile={sceneStatus === 'open' || sceneStatus === 'blocked'}
@@ -289,12 +289,12 @@ export default function App() {
         <button onClick={toggleSnap} title="Snap to Grid" disabled={!ui.canEditScene}
           className={`flex items-center gap-1 px-2.5 py-1.5 rounded text-xs font-medium border transition-all ${
             snapEnabled ? 'border-blue-500 bg-blue-900/40 text-blue-300' : 'border-gray-700 text-gray-400 hover:bg-gray-700'} disabled:opacity-40 disabled:pointer-events-none`}>
-          <Icon name="Snap" /> <span className="hidden xl:inline">Snap</span>
+          <Icon name="Snap" /> <span className="hidden 2xl:inline">Snap</span>
         </button>
 
         <button onClick={() => send({ type: 'RESET_CAMERA' })} title="Reset Camera View (F)" disabled={!ui.canEditScene}
           className="flex items-center gap-1 px-2.5 py-1.5 rounded text-xs font-medium border border-gray-700 text-gray-400 hover:bg-gray-700 transition-all ml-0.5 disabled:opacity-40 disabled:pointer-events-none">
-          <Icon name="Reload" /> <span className="hidden xl:inline">Reset View</span>
+          <Icon name="Reload" /> <span className="hidden 2xl:inline">Reset View</span>
         </button>
 
         <div className="flex items-center gap-0.5 ml-1">
@@ -313,7 +313,7 @@ export default function App() {
           <button onClick={() => dev.url && api.openLocalUrl(dev.url)} title="Open in browser"
             className="text-[10px] font-mono text-green-500 border border-green-900 hover:bg-green-900/30 rounded px-1.5 py-0.5 flex items-center gap-1 transition-all">
             <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse inline-block" />
-            <span className="hidden xl:inline">{dev.url}</span> ↗
+            <span className="hidden 2xl:inline">{dev.url}</span> ↗
           </button>
         )}
         {projectFolder && dev.scripts.length > 0 && (

@@ -131,22 +131,24 @@ export default function ProjectPanel({ projectFolder, project, onOpenScene, onCr
         {rows.length === 0 ? <p className="text-gray-500">No scenes yet.</p> : (
           <ul className="space-y-1">
             {rows.map((r, i) => (
-              <li key={`${r.key ?? r.cls?.className}-${i}`} className="flex items-center gap-2">
-                <span className={`border rounded px-1 py-px text-[10px] whitespace-nowrap ${STATE_STYLE[r.state]}`}>{STATE_LABEL[r.state]}</span>
-                <span className="font-medium">{r.key ?? <span className="text-gray-500">(computed key)</span>}</span>
-                {r.cls && (
-                  <span className="text-gray-500 truncate" title={`${r.cls.path}:${r.cls.line}`}>
-                    {r.cls.className}{r.inGameConfig === false && ' · not in game config'}
+              <li key={`${r.key ?? r.cls?.className}-${i}`}>
+                <div className="flex items-center gap-2">
+                  <span className={`border rounded px-1 py-px text-[10px] whitespace-nowrap ${STATE_STYLE[r.state]}`}>{STATE_LABEL[r.state]}</span>
+                  <span className="font-medium truncate">{r.key ?? <span className="text-gray-500">(computed key)</span>}</span>
+                  <span className="ml-auto flex gap-1 whitespace-nowrap">
+                    {r.state !== 'code-only' && r.key && (
+                      <button onClick={() => onOpenScene(r.key!)} className="text-gray-400 hover:text-white px-1.5 py-0.5 rounded hover:bg-gray-700">Open</button>
+                    )}
+                    {r.state === 'code-only' && r.key && project && isSceneKey(r.key) && (
+                      <button onClick={() => onCreateLayout(r.key!)} className="text-gray-400 hover:text-white px-1.5 py-0.5 rounded hover:bg-gray-700">Create layout</button>
+                    )}
                   </span>
+                </div>
+                {r.cls && (
+                  <div className="text-gray-500 truncate pl-1" title={`${r.cls.path}:${r.cls.line}`}>
+                    {r.cls.className}{r.inGameConfig === false && ' · not in game config'}
+                  </div>
                 )}
-                <span className="ml-auto flex gap-1">
-                  {r.state !== 'code-only' && r.key && (
-                    <button onClick={() => onOpenScene(r.key!)} className="text-gray-400 hover:text-white px-1.5 py-0.5 rounded hover:bg-gray-700">Open</button>
-                  )}
-                  {r.state === 'code-only' && r.key && project && isSceneKey(r.key) && (
-                    <button onClick={() => onCreateLayout(r.key!)} className="text-gray-400 hover:text-white px-1.5 py-0.5 rounded hover:bg-gray-700">Create layout</button>
-                  )}
-                </span>
               </li>
             ))}
           </ul>

@@ -48,11 +48,11 @@ export function ToolBtn({ icon, label, flipX, active, onClick, disabled, extra =
 }) {
   return (
     <button title={label} onClick={onClick} disabled={disabled}
-      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium transition-all disabled:opacity-30 disabled:cursor-not-allowed ${
+      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium whitespace-nowrap transition-all disabled:opacity-30 disabled:cursor-not-allowed ${
         active ? 'bg-blue-600 text-white shadow-[0_0_10px_rgba(59,130,246,0.4)]'
           : 'text-gray-300 hover:bg-gray-700 hover:text-white'
       } ${extra}`}>
-      <Icon name={icon} flipX={flipX} /><span className="hidden xl:inline">{label}</span>
+      <Icon name={icon} flipX={flipX} /><span className="hidden 2xl:inline">{label}</span>
     </button>
   );
 }
