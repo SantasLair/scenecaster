@@ -358,7 +358,7 @@ export default function ObjectsPanel(props: Props) {
           className="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:bg-[var(--gd-flat-hover)] hover:text-white"><Icon name="Add" /></button>
       </div>
 
-      <div tabIndex={0} onKeyDown={onKeyDown} className="flex-1 overflow-auto outline-none text-xs pb-2"
+      <div tabIndex={0} data-arrow-nav onKeyDown={onKeyDown} className="flex-1 overflow-auto outline-none text-xs pb-2"
         onContextMenu={e => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, id: null, mode: 'context' }); }}
         onDragOver={e => {
           if (!dragRef.current) return;

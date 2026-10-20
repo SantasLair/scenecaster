@@ -241,7 +241,7 @@ export default function App() {
         </div>}
         {!liveUrl && ui.canvasAvailable && (
           <div className="absolute bottom-3 left-3 text-gray-700 text-[10px] pointer-events-none">
-            Q·W·E·R = tools &nbsp;·&nbsp; Scroll = zoom &nbsp;·&nbsp; Middle mouse = pan &nbsp;·&nbsp; F = reset view &nbsp;·&nbsp; Del = delete
+            Q·W·E·R = tools &nbsp;·&nbsp; Scroll = zoom &nbsp;·&nbsp; Middle mouse = pan &nbsp;·&nbsp; F = reset view &nbsp;·&nbsp; Arrows = nudge (Shift ×10) &nbsp;·&nbsp; Del = delete
           </div>
         )}
       </>

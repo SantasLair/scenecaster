@@ -491,6 +491,24 @@ export function useScene({ iframeRef, send, projectFolder, appendLog, showConsol
     model.resetScene('Main');
   };
 
+  /** Arrow-key nudge: 1 px, 10 px with Shift. Held keys and quick presses share one undo step, closed after a pause. */
+  const nudgeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const NUDGE: Record<string, [number, number]> = { arrowleft: [-1, 0], arrowright: [1, 0], arrowup: [0, -1], arrowdown: [0, 1] };
+  const nudgeSelected = (dir: [number, number], shift: boolean): boolean => {
+    const id = useEditorStore.getState().selectedId;
+    const found = id ? findById(useSceneModel.getState().scene, id) : null;
+    if (!id || !found || lockedIds.has(id)) return false;
+    const d = shift ? 10 : 1;
+    beginGesture();
+    model.update(id, {
+      x: Math.round(((found.obj.x as number | undefined) ?? 0) + dir[0] * d),
+      y: Math.round(((found.obj.y as number | undefined) ?? 0) + dir[1] * d),
+    });
+    if (nudgeTimer.current) clearTimeout(nudgeTimer.current);
+    nudgeTimer.current = setTimeout(() => { nudgeTimer.current = null; commitEdit(); }, 500);
+    return true;
+  };
+
   /** Returns true when the key was an editor shortcut. */
   const handleShortcut = useLatest((k: ShortcutKey) => {
     if (readOnly || sceneStatus !== 'open') return false;
@@ -508,6 +526,7 @@ export function useScene({ iframeRef, send, projectFolder, appendLog, showConsol
     else if (key === 'f') send({ type: 'RESET_CAMERA' });
     else if (key === 'delete' && sel) deleteObject(sel);
     else if (key === 'escape') { send({ type: 'DESELECT_ALL' }); select(null); }
+    else if (key in NUDGE) return nudgeSelected(NUDGE[key], k.shiftKey);
     else return false;
     return true;
   });
@@ -562,6 +581,8 @@ export function useScene({ iframeRef, send, projectFolder, appendLog, showConsol
       onMessage.current(ev.data);
     };
     const handleKey = (ev: KeyboardEvent) => {
+      // The Objects and FileSystem trees use the arrow keys to move their own selection.
+      if (ev.key.startsWith('Arrow') && ev.target instanceof Element && ev.target.closest('[data-arrow-nav]')) return;
       if (!isTyping(ev.target) && handleShortcut.current(ev)) ev.preventDefault();
     };
     window.addEventListener('message', handleMessage);

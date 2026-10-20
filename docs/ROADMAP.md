@@ -97,7 +97,7 @@ Built on the v1 format. Anything format-specific is redone in Phase 2; the edito
 - [~] **M** Project overview panel (`ProjectPanel.tsx`): shows the project file's name, entry scene and counts, and what the source scan detects (game config and canvas size, scene classes, asset loads, with computed ones counted as unreadable), marked "detected, not saved". A new project's setup dialog now suggests its first scene (a drop-down of the scene keys found in the code, the game config's first scene preselected) and the canvas size from the game config (`suggestFirstScene`). Still to do: editing a setting and writing it back.
 - [x] **M** Scene list joined to the scene registry (`shared/sceneRegistry.ts`, shown in the Project panel): states *layout + code*, *code only*, *layout only*, a flag for classes missing from the game config, and "Create layout" on a code-only scene with a valid key.
 - [ ] **S** *Optional:* scene flow view drawn from the registry.
-- [ ] **S** Multi-select, copy/paste, arrow-key nudge, per-scene camera persistence, recent projects.
+- [~] **S** Multi-select, copy/paste, per-scene camera persistence, recent projects. *(Arrow-key nudge is done: the arrows move the selected object 1 px, Shift 10 px, in its parent's coordinates; locked objects stay put; held keys and quick presses are one undo step; the Objects and FileSystem trees keep the arrows for their own navigation.)*
 - [ ] **S** Folder-name constant is in `src/shared/layout.ts`; the generated docs (`MIGRATE.md` and others) that read it are not started.
 
 ### Phase 1b: Quick wins (can go any time)
