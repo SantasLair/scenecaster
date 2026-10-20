@@ -108,6 +108,8 @@ export default function AssetBrowser({ projectFolder, onOpenProject, onDragAsset
 
   const [leftW, setLeftW] = useState(140);
   const [assetsDir, setAssetsDir] = useState('assets');
+  const [customDir, setCustomDir] = useState(false);
+  const [folderError, setFolderError] = useState<string | null>(null);
   const [subfolder, setSubfolder] = useState('');
   const [reload, setReload] = useState(0);
   const [overDrop, setOverDrop] = useState(false);
@@ -122,7 +124,7 @@ export default function AssetBrowser({ projectFolder, onOpenProject, onDragAsset
     }
     let cancelled = false;
     setLoading(true);
-    void window.electronAPI.assetsInfo(projectFolder).then(info => { if (!cancelled && info) setAssetsDir(info.dir); });
+    void window.electronAPI.assetsInfo(projectFolder).then(info => { if (!cancelled && info) { setAssetsDir(info.dir); setCustomDir(info.custom); } });
     window.electronAPI.readAssets(projectFolder)
       .then(result => { if (!cancelled) setAssets(result); })
       .finally(() => { if (!cancelled) setLoading(false); });
@@ -167,6 +169,14 @@ export default function AssetBrowser({ projectFolder, onOpenProject, onDragAsset
     setImporting(true);
     try { if ((await onImport(sources, destRel)).length) setReload(n => n + 1); } finally { setImporting(false); }
   };
+  const chooseFolder = async (reset: boolean) => {
+    const r = await window.electronAPI.chooseAssetsFolder(projectFolder!, reset);
+    setFolderError(r.ok ? null : r.error ?? 'Could not change the assets folder.');
+    if (!r.ok) return;
+    setSelectedFolder(null);
+    void window.electronAPI.watchAssets(projectFolder!); // follow the new folder
+    setReload(n => n + 1);
+  };
   const pick = async () => runImport(await window.electronAPI.pickAssets());
   const isFileDrag = (e: React.DragEvent) => e.dataTransfer.types.includes('Files');
 
@@ -198,6 +208,9 @@ export default function AssetBrowser({ projectFolder, onOpenProject, onDragAsset
           {importing ? 'Importing…' : 'Import…'}
         </button>
         <span className="truncate" title={destRel}>into {assetsDir}{selectedFolder ? `/${selectedFolder.path}` : ''}/</span>
+        <button onClick={() => void chooseFolder(false)} title="Choose a different assets folder inside the project" className="underline hover:text-white flex-shrink-0">Change…</button>
+        {customDir && <button onClick={() => void chooseFolder(true)} title="Go back to finding the folder automatically" className="underline hover:text-white flex-shrink-0">Auto</button>}
+        {folderError && <span className="text-red-400 truncate" title={folderError}>{folderError}</span>}
         <input value={subfolder} onChange={e => setSubfolder(e.target.value)} placeholder="new subfolder (optional)" spellCheck={false}
           className={`w-40 min-w-0 bg-gray-900 border rounded px-1.5 py-0.5 text-xs text-gray-200 focus:outline-none focus:border-blue-500 placeholder-gray-600 ${sub === null ? 'border-red-600' : 'border-gray-700'}`} />
         <span className="text-gray-600 hidden xl:inline">or drop files here</span>

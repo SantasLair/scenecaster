@@ -19,6 +19,9 @@ interface AssetFolder {
 
 type AssetEntry = AssetFile | AssetFolder;
 
+/** `custom` is true when the folder was chosen in the Assets tab rather than auto-detected. */
+interface AssetsInfo { dir: string; exists: boolean; custom: boolean }
+
 /** One row of the FileSystem tree: `path` is absolute. */
 interface FsEntry { name: string; type: 'folder' | 'file'; path: string; ext: string }
 
@@ -28,7 +31,7 @@ type IpcResult = { ok: boolean; error?: string };
 type PfReadResult = IpcResult & { found?: boolean; text?: string };
 
 /** Editor-only settings, stored in scenecaster/editor.json (not part of PHASEFORM). */
-interface EditorSettings { devScript?: string }
+interface EditorSettings { devScript?: string; assetsDir?: string }
 
 interface ElectronAPI {
   openFolder: () => Promise<string | null>;
@@ -41,7 +44,9 @@ interface ElectronAPI {
   /** Which of these project-relative files do not exist. */
   missingAssetFiles: (folder: string, relPaths: string[]) => Promise<string[]>;
   /** The assets folder (project-relative); `exists` is false when `dir` is only where one would be created. Null outside a project. */
-  assetsInfo: (folder: string) => Promise<{ dir: string; exists: boolean } | null>;
+  assetsInfo: (folder: string) => Promise<AssetsInfo | null>;
+  /** Opens a folder picker for the assets folder (or, with reset, returns to auto-detection). */
+  chooseAssetsFolder: (folder: string, reset?: boolean) => Promise<{ ok: boolean; error?: string; info?: AssetsInfo }>;
   /** Opens the system file picker and returns the chosen paths (empty if cancelled). */
   pickAssets: () => Promise<string[]>;
   /** Copies files into a project subfolder without overwriting; a taken name gets -2, -3... */

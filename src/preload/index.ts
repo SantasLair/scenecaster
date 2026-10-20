@@ -19,6 +19,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => { ipcRenderer.removeListener('assets:changed', listener); };
   },
   missingAssetFiles: (folder: string, relPaths: string[]) => ipcRenderer.invoke('assets:missing', folder, relPaths),
+  /** Opens a folder picker for the assets folder (or, with reset, returns to auto-detection). */
+  chooseAssetsFolder: (folder: string, reset = false) => ipcRenderer.invoke('assets:chooseFolder', folder, reset),
   assetsInfo: (folder: string) => ipcRenderer.invoke('assets:info', folder),
   pickAssets: () => ipcRenderer.invoke('assets:pick'),
   importAssets: (folder: string, destRel: string, sources: string[]) => ipcRenderer.invoke('assets:import', folder, destRel, sources),

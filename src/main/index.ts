@@ -396,11 +396,37 @@ app.whenReady().then(() => {
   });
 
   /** The project's assets folder, found among public/assets, assets and public (symlinks that leave the project do not count). */
-  const assetsInfo = (folder: string) => detectAssetsFolder(rel => guardFolder(path.join(folder, ...rel.split('/'))) !== null);
+  /** The assets folder: the one chosen in the Assets tab (`assetsDir` in editor.json) if it still exists, else the auto-detected one. */
+  const assetsInfo = (folder: string): { dir: string; exists: boolean; custom: boolean } => {
+    const isDir = (rel: string) => guardFolder(path.join(folder, ...rel.split('/'))) !== null;
+    const file = editorFile(folder);
+    const saved = file ? (readJson(file) as { assetsDir?: unknown } | null)?.assetsDir : undefined;
+    const custom = typeof saved === 'string' ? cleanSubfolder(saved) : null;
+    if (custom && isDir(custom)) return { dir: custom, exists: true, custom: true };
+    return { ...detectAssetsFolder(isDir), custom: false };
+  };
 
   ipcMain.handle('assets:info', (_e, rawFolder: unknown) => {
     const folder = guardFolder(rawFolder);
     return folder ? assetsInfo(folder) : null;
+  });
+
+  /** Lets the user pick the assets folder (inside the project) and remembers it in editor.json; `reset` goes back to auto-detection. */
+  ipcMain.handle('assets:chooseFolder', async (_e, rawFolder: unknown, reset: unknown): Promise<{ ok: boolean; error?: string; info?: ReturnType<typeof assetsInfo> }> => {
+    const folder = guardFolder(rawFolder);
+    const file = folder ? editorFile(folder) : null;
+    if (!folder || !file) return BAD_PATH;
+    let assetsDir: string | undefined;
+    if (!reset) {
+      const result = await dialog.showOpenDialog({ properties: ['openDirectory'], title: 'Choose the assets folder', defaultPath: folder });
+      if (result.canceled || !result.filePaths[0]) return { ok: true, info: assetsInfo(folder) };
+      const picked = guardFolder(result.filePaths[0]);
+      if (!picked || !isInside(folder, picked)) return { ok: false, error: 'The assets folder must be inside the project folder.' };
+      assetsDir = cleanSubfolder(toPosix(path.relative(folder, picked))) || undefined;
+      if (!assetsDir) return { ok: false, error: 'Pick a folder inside the project, not the project folder itself.' };
+    }
+    const r = mergeEditorSettings(file, { assetsDir });
+    return r.ok ? { ok: true, info: assetsInfo(folder) } : r;
   });
 
   /** Watches the project's assets folder (replacing any earlier watch); an invalid folder or no assets folder just stops watching. */
@@ -607,6 +633,16 @@ app.whenReady().then(() => {
     const dir = guardFolder(folder);
     return dir ? guardPath(path.join(dir, PROJECT_DIR, EDITOR_FILE)) : null;
   };
+  /** Merges into the existing editor.json so keys this version does not know are kept; a key set to undefined is removed. */
+  const mergeEditorSettings = (file: string, settings: Record<string, unknown>) => {
+    let existing: Record<string, unknown> = {};
+    if (fs.existsSync(file)) {
+      const cur = readJson(file);
+      if (!cur || typeof cur !== 'object' || Array.isArray(cur)) return { ok: false, error: 'editor.json exists but cannot be read; not overwriting it.' };
+      existing = cur;
+    }
+    return writeJson(file, { ...existing, ...settings });
+  };
   ipcMain.handle('pf:readEditorSettings', (_e, folder: unknown) => {
     const file = editorFile(folder);
     const s = file ? readJson(file) : null;
@@ -615,14 +651,7 @@ app.whenReady().then(() => {
   ipcMain.handle('pf:writeEditorSettings', (_e, folder: unknown, settings: unknown) => {
     const file = editorFile(folder);
     if (!file || !settings || typeof settings !== 'object' || Array.isArray(settings)) return BAD_PATH;
-    // Merge into the existing file so keys this version does not know are kept.
-    let existing: Record<string, unknown> = {};
-    if (fs.existsSync(file)) {
-      const cur = readJson(file);
-      if (!cur || typeof cur !== 'object' || Array.isArray(cur)) return { ok: false, error: 'editor.json exists but cannot be read; not overwriting it.' };
-      existing = cur;
-    }
-    return writeJson(file, { ...existing, ...settings });
+    return mergeEditorSettings(file, settings as Record<string, unknown>);
   });
 
   // Dev-server scripts only: `dev`, `dev:*`, and variants like `engine:dev:fantasy`.
