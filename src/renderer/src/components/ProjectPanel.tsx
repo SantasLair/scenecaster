@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { joinScenes, type SceneRow, type SceneState } from '../../../shared/sceneRegistry';
 import { isSceneKey } from '../../../shared/phaseform/format';
+import { driftReport, findDrift } from '../../../shared/drift';
+import { assetFiles } from '../../../shared/phaseform/assets';
 import type { PfProject } from '../../../shared/phaseform/types';
 
 const api = window.electronAPI;
@@ -26,6 +28,8 @@ interface Props {
 export default function ProjectPanel({ projectFolder, project, onOpenScene, onCreateLayout }: Props) {
   const [scan, setScan] = useState<SourceScan | null>(null);
   const [loading, setLoading] = useState(false);
+  const [missing, setMissing] = useState<Set<string>>(new Set());
+  const [copied, setCopied] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!projectFolder) { setScan(null); return; }
@@ -40,6 +44,20 @@ export default function ProjectPanel({ projectFolder, project, onOpenScene, onCr
   const rows = useMemo(
     () => (scan ? joinScenes(project?.scenes ?? [], scan.scenes, scan.config) : (project?.scenes ?? []).map((e): SceneRow => ({ state: 'layout-only', key: e.key, path: e.path }))),
     [scan, project]);
+
+  // Manifest files that are not on disk, re-checked whenever the manifest or the scan changes.
+  useEffect(() => {
+    if (!projectFolder || !project) { setMissing(new Set()); return; }
+    let live = true;
+    void api.missingAssetFiles(projectFolder, [...new Set(project.assets.flatMap(assetFiles))]).then(m => { if (live) setMissing(new Set(m)); });
+    return () => { live = false; };
+  }, [projectFolder, project?.assets, scan]);
+
+  const drift = useMemo(() => (project && scan ? findDrift(project, rows, scan.loads, missing) : []), [project, scan, rows, missing]);
+
+  const copyDrift = async () => {
+    try { await navigator.clipboard.writeText(driftReport(drift)); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* clipboard unavailable */ }
+  };
 
   if (!projectFolder) return <p className="text-gray-600 text-xs text-center py-6">Open a project to see its scenes and settings.</p>;
 
@@ -105,6 +123,22 @@ export default function ProjectPanel({ projectFolder, project, onOpenScene, onCr
           </ul>
         )}
       </section>
+
+      {project && scan && (
+        <section>
+          <div className="flex items-center justify-between mb-1">
+            <h3 className="text-gray-400 uppercase tracking-wider text-[10px]">Drift</h3>
+            {drift.length > 0 && (
+              <button onClick={() => void copyDrift()} className="text-gray-400 hover:text-white px-1.5 py-0.5 rounded hover:bg-gray-700">{copied ? 'Copied' : 'Copy for AI'}</button>
+            )}
+          </div>
+          {drift.length === 0 ? <p className="text-green-400">The code and the PHASEFORM files agree.</p> : (
+            <ul className="space-y-1">
+              {drift.map((d, i) => <li key={i} className="text-yellow-300">⚠ {d.message}</li>)}
+            </ul>
+          )}
+        </section>
+      )}
     </div>
   );
 }
