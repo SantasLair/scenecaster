@@ -8,7 +8,7 @@ import { LIVE_FIELDS } from '../../shared/protocol';
 import type { PfAsset, PfObject, PfProject, PfScene, Problem } from '../../shared/phaseform/types';
 import { newScene } from '../../shared/phaseform/format';
 import { addAnimation as addAnim, removeAnimationKey, renameAnimationKey, updateAnimationFields, animationUses, type PfAnimation } from '../../shared/phaseform/animations';
-import { assetUses, removeAssetKey, renameAssetKey, updateAssetFields } from '../../shared/phaseform/assets';
+import { addRename, assetUses, removeAssetKey, renameAssetKey, updateAssetFields, type AssetRename } from '../../shared/phaseform/assets';
 import { insertObject, moveObject, removeObject, updateObject, walk, findById, type Removed } from '../../shared/phaseform/tree';
 import { checkSceneAgainstProject, validateScene } from '../../shared/phaseform/validate';
 import { useEditorStore } from './store';
@@ -25,6 +25,8 @@ interface ModelState {
   savedRev: number;
   projectRev: number;
   projectSavedRev: number;
+  /** Asset renames made since the last save: other scene files on disk still use the old keys until the next save rewrites them. */
+  pendingRenames: AssetRename[];
   /** Validation of the loaded document, plus what the viewport reported when it built the scene. */
   problems: Problem[];
   viewWarnings: string[];
@@ -36,7 +38,7 @@ interface ModelState {
 const emptyScene = (key = 'Main'): PfScene => newScene(key);
 
 export const useSceneModel = create<ModelState>(() => ({
-  scene: emptyScene(), project: null, scenePath: null, rev: 0, savedRev: 0, projectRev: 0, projectSavedRev: 0,
+  scene: emptyScene(), project: null, scenePath: null, rev: 0, savedRev: 0, projectRev: 0, projectSavedRev: 0, pendingRenames: [],
   problems: [], viewWarnings: [], blocked: false, status: 'none',
 }));
 
@@ -186,20 +188,25 @@ export function blockScene(key: string, scenePath: string | null, problems: Prob
 export const setLoading = () => set({ status: 'loading' });
 
 export function setProject(project: PfProject | null, dirty = false) {
-  set(s => ({ project, projectRev: s.projectRev + 1, projectSavedRev: dirty ? s.projectRev : s.projectRev + 1 }));
+  set(s => ({ project, projectRev: s.projectRev + 1, projectSavedRev: dirty ? s.projectRev : s.projectRev + 1, pendingRenames: [] }));
 }
 
 export function markSaved(rev: number) { set({ savedRev: rev }); }
 export function markProjectSaved(rev: number) { set({ projectSavedRev: rev }); }
+/** The other scene files now use the new keys. */
+export function clearPendingRenames() { set({ pendingRenames: [] }); }
 
-/** Both documents as they are now, for undo snapshots. */
-export interface Snapshot { scene: PfScene; project: PfProject | null }
-export const snapshot = (): Snapshot => ({ scene: get().scene, project: get().project });
+/** Both documents as they are now, for undo snapshots (with the renames the next save still has to apply to other scene files). */
+export interface Snapshot { scene: PfScene; project: PfProject | null; renames: AssetRename[] }
+export const snapshot = (): Snapshot => ({ scene: get().scene, project: get().project, renames: get().pendingRenames });
 
 /** Puts a snapshot back (undo/redo): the viewport is rebuilt. */
 export function restore(snap: Snapshot) {
   // The project counts as changed only if the snapshot holds a different manifest (undoing a scene edit must not rewrite it).
-  set(s => ({ scene: snap.scene, project: snap.project, rev: s.rev + 1, projectRev: snap.project !== s.project ? s.projectRev + 1 : s.projectRev }));
+  set(s => ({
+    scene: snap.scene, project: snap.project, pendingRenames: snap.renames, rev: s.rev + 1,
+    projectRev: snap.project !== s.project ? s.projectRev + 1 : s.projectRev,
+  }));
   revalidateSoon();
   void pushAll();
 }
@@ -275,7 +282,10 @@ export function renameAsset(oldKey: string, newKey: string): boolean {
   const { scene, project } = get();
   const next = project && renameAssetKey(scene, project, oldKey, newKey);
   if (!next) return false;
-  set(s => ({ scene: next.scene, project: next.project, rev: next.scene === scene ? s.rev : s.rev + 1, projectRev: s.projectRev + 1 }));
+  set(s => ({
+    scene: next.scene, project: next.project, rev: next.scene === scene ? s.rev : s.rev + 1, projectRev: s.projectRev + 1,
+    pendingRenames: addRename(s.pendingRenames, oldKey, newKey),
+  }));
   viewHas.delete(oldKey);
   revalidateSoon();
   schedulePush(0);

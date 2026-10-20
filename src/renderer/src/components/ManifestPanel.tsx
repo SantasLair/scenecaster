@@ -52,7 +52,7 @@ function PathField({ value, required, onApply }: { value: string; required?: boo
   );
 }
 
-export function KeyField({ keyName, onRename, hint = 'Renaming also updates the open scene, animations and preload lists.', what = 'asset' }: {
+export function KeyField({ keyName, onRename, hint = 'Renaming also updates the open scene, animations and preload lists; other scene files are updated when you save.', what = 'asset' }: {
   keyName: string; onRename(k: string): boolean; hint?: string; what?: string;
 }) {
   const [text, setText] = useState(keyName);

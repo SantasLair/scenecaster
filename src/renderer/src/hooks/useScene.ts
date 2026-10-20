@@ -12,6 +12,7 @@ import { PROJECT_FILE, formatJson, isSceneKey, newProject, scenePathFor } from '
 import { allIds, cloneWithNewIds, findById, uniqueId } from '../../../shared/phaseform/tree';
 import { checkSceneAgainstProject, validateProject, validateScene } from '../../../shared/phaseform/validate';
 import { planManifestEntries, suggestKey } from '../../../shared/assetImport';
+import { applyRenamesToScene } from '../../../shared/phaseform/assets';
 import type { PfAsset } from '../../../shared/phaseform/types';
 import { ADD_LABELS, createImage, createObject, type AddKind } from '../newObjects';
 import * as history from '../history';
@@ -245,6 +246,8 @@ export function useScene({ iframeRef, send, projectFolder, appendLog, showConsol
     const s = useSceneModel.getState();
     if (!s.scenePath) return fail('This scene has no file path.');
     const sceneRev = s.rev, projRev = s.projectRev;
+    // Other scene files first: if one cannot be rewritten, the project file keeps the old keys and the next save retries.
+    if (s.project && s.pendingRenames.length && !(await rewriteOtherScenes(folder, s.project, s.scenePath, s.pendingRenames))) return;
     const r = await api.writeScene(folder, s.scenePath, formatJson(s.scene).replace(/\n/g, eolRef.current.scene));
     if (!r.ok) return fail(r.error);
     model.markSaved(sceneRev);
@@ -252,7 +255,34 @@ export function useScene({ iframeRef, send, projectFolder, appendLog, showConsol
       const p = await api.writeProject(folder, formatJson(s.project).replace(/\n/g, eolRef.current.project));
       if (!p.ok) return fail(p.error);
       model.markProjectSaved(projRev);
+      if (useSceneModel.getState().pendingRenames === s.pendingRenames) model.clearPendingRenames();
     }
+  };
+
+  /** Applies asset renames to every other scene file in the project; false (after logging why) if any could not be updated. */
+  const rewriteOtherScenes = async (folder: string, project: PfProject, openPath: string, renames: model.Snapshot['renames']) => {
+    let ok = true;
+    let changed = 0;
+    for (const entry of project.scenes) {
+      if (entry.path === openPath) continue;
+      const r = await api.readScene(folder, entry.path);
+      if (!r.ok) { fail(`Cannot read ${entry.path} to update the renamed assets: ${r.error ?? 'unknown error'}`); ok = false; continue; }
+      if (!r.found) continue;
+      const parsed = parseJson<PfScene>(r.text ?? '');
+      if (!parsed.ok || !parsed.value || !Array.isArray(parsed.value.objects)) {
+        fail(`${entry.path} is not a readable PHASEFORM scene, so assets renamed in it were not updated. Fix the file and save again.`);
+        ok = false;
+        continue;
+      }
+      const next = applyRenamesToScene(parsed.value, renames);
+      if (next === parsed.value) continue;
+      const eol = r.text!.includes('\r\n') ? '\r\n' : '\n';
+      const w = await api.writeScene(folder, entry.path, formatJson(next).replace(/\n/g, eol));
+      if (!w.ok) { fail(w.error); ok = false; continue; }
+      changed++;
+    }
+    if (changed) appendLog(`\n[Updated renamed assets in ${changed} other scene file${changed === 1 ? '' : 's'}.]\n`);
+    return ok;
   };
 
   const handleSave = async () => {

@@ -96,6 +96,28 @@ export function renameAssetKey(scene: PfScene, project: PfProject, oldKey: strin
   return { scene: nextScene, project: { ...refs, assets: refs.assets.map(a => (a.key === oldKey ? { ...a, key: newKey } : a)) } };
 }
 
+export interface AssetRename { from: string; to: string }
+
+/** Applies recorded renames, in order, to the objects of a scene that is not open. The same scene back if nothing changed. */
+export function applyRenamesToScene(scene: PfScene, renames: AssetRename[]): PfScene {
+  let objects = scene.objects;
+  for (const r of renames) {
+    const fn = (k: string) => (k === r.from ? r.to : k);
+    const mapped = objects.map(o => mapObjectRefs(o, fn));
+    if (mapped.some((o, i) => o !== objects[i])) objects = mapped;
+  }
+  return objects === scene.objects ? scene : { ...scene, objects };
+}
+
+/** Adds a rename to a pending list, folding chains: a->b then b->c is a->c, and a->b then b->a cancels out. */
+export function addRename(list: AssetRename[], from: string, to: string): AssetRename[] {
+  const i = list.findIndex(r => r.to === from);
+  if (i < 0) return [...list, { from, to }];
+  const merged = { from: list[i].from, to };
+  const rest = list.filter((_, j) => j !== i);
+  return merged.from === merged.to ? rest : [...rest, merged];
+}
+
 /** Merges `patch` into one asset (`undefined` removes a field). The key is not changed here: use renameAssetKey. */
 export function updateAssetFields(project: PfProject, key: string, patch: Record<string, unknown>): PfProject | null {
   const index = project.assets.findIndex(a => a.key === key);
