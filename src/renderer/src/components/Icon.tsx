@@ -4,12 +4,14 @@ const files = import.meta.glob('../icons/*.svg', { query: '?raw', import: 'defau
 const icons: Record<string, string> = {};
 for (const [path, svg] of Object.entries(files)) {
   const name = path.slice(path.lastIndexOf('/') + 1, -'.svg'.length);
-  icons[name] = svg.replace(/fill="#(?:e0e0e0|fff)"/g, 'fill="currentColor"');
+  icons[name] = svg.replace(/(fill|stroke)="#(?:e0e0e0|fff)"/g, '$1="currentColor"');
 }
 
 export type IconName =
   | 'ToolSelect' | 'ToolMove' | 'ToolRotate' | 'ToolScale' | 'Play' | 'Stop' | 'Save' | 'Snap' | 'Reload' | 'Folder'
-  | 'GuiClose' | 'Environment' | 'Window' | 'Lock' | 'Unlock' | 'GuiVisibilityVisible' | 'GuiVisibilityHidden' | 'UndoRedo' | 'Script';
+  | 'GuiClose' | 'Environment' | 'Window' | 'Lock' | 'Unlock' | 'GuiVisibilityVisible' | 'GuiVisibilityHidden' | 'UndoRedo' | 'Script'
+  | 'Node2D' | 'Sprite2D' | 'Label' | 'ColorRect' | 'Polygon2D' | 'Line2D' | 'TextureRect' | 'TileMapLayer' | 'AnimatedSprite2D'
+  | 'GuiTreeArrowRight' | 'GuiTreeArrowDown' | 'Add' | 'Duplicate';
 
 /** A 16px Godot icon that takes the text colour. The SVG text comes from our own bundled files, never from user data. */
 export default function Icon({ name, size = 16, flipX }: { name: IconName; size?: number; flipX?: boolean }) {

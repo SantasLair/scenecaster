@@ -3,7 +3,7 @@ import type React from 'react';
 import type { PfObject } from '../../../shared/phaseform/types';
 import { isContainer } from '../../../shared/phaseform/types';
 import { labelOf, walk } from '../../../shared/phaseform/tree';
-import Icon from './Icon';
+import Icon, { type IconName } from './Icon';
 
 export type AddKind = 'container' | 'rectangle' | 'ellipse' | 'triangle' | 'text';
 
@@ -48,40 +48,15 @@ interface RowData {
 
 // ---------------------------------------------------------------- icons
 
-const TYPE_COLOR: Record<string, string> = {
-  container: '#d9b45a', image: '#7fd1a3', sprite: '#7fd1a3', tileSprite: '#7fd1a3',
-  text: '#e8895a', bitmapText: '#e8895a', graphics: '#c28fe0',
+/** The Godot icon that stands for each object type (coloured the way Godot's scene tree shows them). */
+const TYPE_ICON: Record<string, IconName> = {
+  container: 'Node2D', image: 'TextureRect', sprite: 'Sprite2D', tileSprite: 'TileMapLayer',
+  text: 'Label', bitmapText: 'Label', rectangle: 'ColorRect',
+  ellipse: 'Polygon2D', triangle: 'Polygon2D', polygon: 'Polygon2D', star: 'Polygon2D', line: 'Line2D', arc: 'Line2D',
 };
-const SHAPE_COLOR = '#569eff';
+const TypeIcon = ({ type }: { type: string }) => <Icon name={TYPE_ICON[type] ?? 'Node2D'} />;
 
-function TypeIcon({ type }: { type: string }) {
-  const c = TYPE_COLOR[type] ?? SHAPE_COLOR;
-  const p = { width: 14, height: 14, viewBox: '0 0 16 16', fill: 'none', stroke: c, strokeWidth: 1.4, strokeLinejoin: 'round' as const, strokeLinecap: 'round' as const, className: 'flex-shrink-0' };
-  switch (type) {
-    case 'container': return <svg {...p}><rect x="2" y="3" width="12" height="10" rx="1.5" strokeDasharray="2.5 1.5" /><rect x="5" y="6" width="6" height="4" fill={c} fillOpacity=".25" /></svg>;
-    case 'image': return <svg {...p}><rect x="2" y="3" width="12" height="10" rx="1.5" /><circle cx="6" cy="7" r="1.2" fill={c} /><path d="M3 12l3.5-3.5 2.5 2.5 2-2 2 2" /></svg>;
-    case 'sprite': return <svg {...p}><rect x="2" y="3" width="12" height="10" rx="1.5" /><path d="M8 5l1 2.2 2.2.3-1.7 1.5.5 2.3L8 10.200 6 11.300l.5-2.300L4.800 7.500 7 7.200z" fill={c} fillOpacity=".4" /></svg>;
-    case 'tileSprite': return <svg {...p}><rect x="2" y="2" width="12" height="12" rx="1" /><path d="M8 2v12M2 8h12" /></svg>;
-    case 'text': return <svg {...p}><path d="M3 4h10M8 4v9M6 13h4" /></svg>;
-    case 'bitmapText': return <svg {...p}><path d="M3 13l3.500-9L10 13M4.300 10h4.400M12 6v7" /></svg>;
-    case 'rectangle': return <svg {...p}><rect x="2.500" y="4" width="11" height="8" fill={c} fillOpacity=".25" /></svg>;
-    case 'ellipse': return <svg {...p}><ellipse cx="8" cy="8" rx="5.500" ry="4" fill={c} fillOpacity=".25" /></svg>;
-    case 'triangle': return <svg {...p}><path d="M8 3L14 13H2z" fill={c} fillOpacity=".25" /></svg>;
-    case 'line': return <svg {...p}><path d="M3 13L13 3" /></svg>;
-    case 'polygon': return <svg {...p}><path d="M8 2.500l5 3.600-2 5.900H5L3 6.100z" fill={c} fillOpacity=".25" /></svg>;
-    case 'star': return <svg {...p}><path d="M8 2l1.800 4 4.200.4-3.200 2.800 1 4.300L8 11.300 4.200 13.500l1-4.300L2 6.400 6.200 6z" fill={c} fillOpacity=".25" /></svg>;
-    case 'arc': return <svg {...p}><path d="M3 12a5.500 5.500 0 0110 0" /></svg>;
-    default: return <svg {...p}><path d="M4 2.500h5l3 3v8H4z M9 2.500v3h3" /></svg>;
-  }
-}
-
-function Arrow({ open }: { open: boolean }) {
-  return (
-    <svg width="10" height="10" viewBox="0 0 10 10" className="flex-shrink-0 text-gray-500" style={{ transform: open ? 'rotate(90deg)' : undefined }}>
-      <path d="M3 1.5L7 5 3 8.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
+const Arrow = ({ open }: { open: boolean }) => <span className="text-gray-500"><Icon name={open ? 'GuiTreeArrowDown' : 'GuiTreeArrowRight'} size={12} /></span>;
 
 const EyeIcon = ({ off }: { off: boolean }) => <Icon name={off ? 'GuiVisibilityHidden' : 'GuiVisibilityVisible'} size={14} />;
 const LockIcon = ({ on }: { on: boolean }) => <Icon name={on ? 'Lock' : 'Unlock'} size={14} />;
@@ -154,7 +129,7 @@ const TreeRow = memo(function TreeRow({ row, selected, locked, renaming, drop, h
       onContextMenu={e => h.context(e, obj.id)}
       title={obj.id}
       style={{ paddingLeft: 6 + depth * 14 }}
-      className={`group relative flex items-center gap-1.5 h-[22px] pr-1.5 cursor-default select-none whitespace-nowrap ${
+      className={`group relative flex items-center gap-1.5 h-6 pr-1.5 cursor-default select-none whitespace-nowrap ${
         selected ? 'bg-[var(--gd-tree-selected)] text-white' : 'text-gray-300 hover:bg-[var(--gd-tree-hover)]'
       } ${drop === 'into' ? 'outline outline-1 -outline-offset-1 outline-blue-500 bg-blue-900/30' : ''}`}>
       {drop === 'before' && <span className="absolute left-0 right-0 top-0 h-[2px] bg-blue-500 pointer-events-none" />}
@@ -190,11 +165,11 @@ function Menu({ menu, parentId, canAct, onClose, onAdd, onRename, onDuplicate, o
   menu: NonNullable<MenuState>; parentId: string | null; canAct: boolean; onClose(): void;
   onAdd(kind: AddKind, parentId: string | null): void; onRename(): void; onDuplicate(): void; onDelete(): void;
 }) {
-  const item = 'block w-full text-left px-3 py-1 text-gray-300 hover:bg-gray-700 hover:text-white';
+  const item = 'block w-full text-left px-3 py-1 text-gray-300 hover:bg-[var(--gd-tree-hover)] hover:text-white';
   const adds = (
     <>
       {ADD_ITEMS.map(a => (
-        <button key={a.kind} className={item} onClick={() => { onAdd(a.kind, parentId); onClose(); }}>{a.label}</button>
+        <button key={a.kind} className={`${item} flex items-center gap-2`} onClick={() => { onAdd(a.kind, parentId); onClose(); }}><TypeIcon type={a.kind} />{a.label}</button>
       ))}
     </>
   );
@@ -202,12 +177,12 @@ function Menu({ menu, parentId, canAct, onClose, onAdd, onRename, onDuplicate, o
   const top = Math.min(menu.y, window.innerHeight - (menu.mode === 'add' ? 140 : 190));
   return (
     <div style={{ left, top }} onMouseDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()}
-      className="fixed z-[2000] min-w-40 py-1 rounded text-xs bg-gray-800 border border-gray-700 shadow-lg shadow-black/40">
+      className="fixed z-[2000] min-w-40 py-1 rounded text-xs bg-[var(--gd-surface-popup)] border border-[var(--gd-button-border-normal)] shadow-lg shadow-[var(--gd-shadow)]">
       {menu.mode === 'add' ? adds : (
         <>
           <div className="relative group/add">
             <div className={`${item} cursor-default flex justify-between`}><span>Add</span><span className="text-gray-500">&rsaquo;</span></div>
-            <div className="hidden group-hover/add:block absolute left-full top-0 min-w-32 py-1 rounded bg-gray-800 border border-gray-700 shadow-lg shadow-black/40">{adds}</div>
+            <div className="hidden group-hover/add:block absolute left-full top-0 min-w-36 py-1 rounded bg-[var(--gd-surface-popup)] border border-[var(--gd-button-border-normal)] shadow-lg shadow-[var(--gd-shadow)]">{adds}</div>
           </div>
           {canAct && (
             <>
@@ -380,7 +355,7 @@ export default function ObjectsPanel(props: Props) {
       <div className="flex items-center justify-between px-2 py-1 flex-shrink-0 text-xs">
         <span className="text-gray-500">{byId.size} object{byId.size === 1 ? '' : 's'}</span>
         <button onClick={openAddMenu} onMouseDown={e => e.stopPropagation()} title="Add object"
-          className="w-5 h-5 flex items-center justify-center rounded text-gray-400 hover:bg-gray-700 hover:text-white text-sm leading-none">+</button>
+          className="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:bg-[var(--gd-flat-hover)] hover:text-white"><Icon name="Add" /></button>
       </div>
 
       <div tabIndex={0} onKeyDown={onKeyDown} className="flex-1 overflow-auto outline-none text-xs pb-2"
