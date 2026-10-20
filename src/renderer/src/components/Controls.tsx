@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
-import { isSceneKey } from '../../../shared/phaseform/format';
+import { DEFAULT_FIRST_SCENE, isSceneKey } from '../../../shared/phaseform/format';
+import type { FirstSceneSuggestion } from '../../../shared/sceneRegistry';
 import Icon, { type IconName } from './Icon';
 
 interface FieldProps {
@@ -72,11 +73,15 @@ export function PresetButton({ label, active, onClick, className = '' }: {
 
 const SIZE_PRESETS = [{ w: 1280, h: 720 }, { w: 960, h: 540 }, { w: 800, h: 600 }];
 
-export function SetupDialog({ onConfirm, onCancel }: {
-  onConfirm: (w: number, h: number) => void; onCancel: () => void;
+export function SetupDialog({ suggestion, onConfirm, onCancel }: {
+  /** What the game's code suggests (first scene key, canvas size); null when the code could not be scanned. */
+  suggestion: FirstSceneSuggestion | null;
+  onConfirm: (w: number, h: number, key: string) => void; onCancel: () => void;
 }) {
-  const [w, setW] = useState(1280);
-  const [h, setH] = useState(720);
+  const [w, setW] = useState(suggestion?.width ?? 1280);
+  const [h, setH] = useState(suggestion?.height ?? 720);
+  const [key, setKey] = useState(suggestion?.key ?? DEFAULT_FIRST_SCENE);
+  const options = suggestion?.options ?? [{ key: DEFAULT_FIRST_SCENE, label: DEFAULT_FIRST_SCENE }];
   const sizeInput = (label: string, value: number, set: (v: number) => void, fallback: number, max: number) => (
     <div className="flex items-center justify-between">
       <span className="text-xs text-gray-400">{label}</span>
@@ -85,13 +90,21 @@ export function SetupDialog({ onConfirm, onCancel }: {
     </div>
   );
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/70 backdrop-blur-sm">
       <div className="bg-gray-800 border border-gray-600 rounded-lg shadow-2xl p-6 w-80">
         <h2 className="text-sm font-semibold text-white mb-1">New PHASEFORM project</h2>
         <p className="text-xs text-gray-400 mb-5 leading-relaxed">
           This folder has no <span className="text-gray-300 font-mono">phaseform.project.json</span>. Choose the canvas size of the first scene; nothing is written until you save.
         </p>
         <div className="space-y-3 mb-5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-gray-400">First scene</span>
+            <select value={key} onChange={e => setKey(e.target.value)}
+              className="w-40 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-blue-500">
+              {options.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+            </select>
+          </div>
+          {suggestion?.source && <p className="text-[10px] text-gray-500 -mt-1">Suggested from {suggestion.source}{suggestion.width && suggestion.height ? '; canvas size from the game config' : ''}.</p>}
           {sizeInput('Width (px)', w, setW, 1280, 7680)}
           {sizeInput('Height (px)', h, setH, 720, 4320)}
           <div className="flex gap-2 flex-wrap pt-1">
@@ -105,7 +118,7 @@ export function SetupDialog({ onConfirm, onCancel }: {
         </div>
         <div className="flex gap-2 justify-end">
           <button onClick={onCancel} className="px-3 py-1.5 rounded text-xs text-gray-400 hover:bg-gray-700 transition-colors">Cancel</button>
-          <button onClick={() => onConfirm(w, h)} className="px-4 py-1.5 rounded text-xs bg-blue-600 hover:bg-blue-500 text-white font-medium transition-colors">Open Project</button>
+          <button onClick={() => onConfirm(w, h, key)} className="px-4 py-1.5 rounded text-xs bg-blue-600 hover:bg-blue-500 text-white font-medium transition-colors">Open Project</button>
         </div>
       </div>
     </div>

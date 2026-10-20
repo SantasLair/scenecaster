@@ -17,7 +17,7 @@ export default function ThemeDialog({ onClose }: { onClose: () => void }) {
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={onClose}>
+    <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/70" onClick={onClose}>
       <div className="bg-gray-800 border border-gray-600 rounded-lg shadow-2xl p-6 w-80" onClick={e => e.stopPropagation()}>
         <h2 className="text-sm font-semibold text-white mb-4">Theme</h2>
         <div className="space-y-3 mb-5">

@@ -8,7 +8,7 @@ import {
 } from '../../../shared/protocol';
 import type { PfObject, PfProject, PfScene, Problem } from '../../../shared/phaseform/types';
 import type { PfAnimation } from '../../../shared/phaseform/animations';
-import { PROJECT_FILE, formatJson, isSceneKey, newProject, scenePathFor } from '../../../shared/phaseform/format';
+import { DEFAULT_FIRST_SCENE, PROJECT_FILE, formatJson, isSceneKey, newProject, scenePathFor } from '../../../shared/phaseform/format';
 import { allIds, cloneWithNewIds, findById, uniqueId } from '../../../shared/phaseform/tree';
 import { checkSceneAgainstProject, validateProject, validateScene } from '../../../shared/phaseform/validate';
 import { planManifestEntries, suggestKey } from '../../../shared/assetImport';
@@ -430,9 +430,8 @@ export function useScene({ iframeRef, send, projectFolder, appendLog, showConsol
   };
 
   /** No project file exists: start one in memory (written on the first save) with an empty first scene. */
-  const createProject = (folder: string, w: number, h: number) => {
+  const createProject = (folder: string, w: number, h: number, key = DEFAULT_FIRST_SCENE) => {
     resetEditing();
-    const key = 'Main';
     const path = scenePathFor(key);
     selectKey(key);
     model.setProject(newProject(baseName(folder), key, path), true);

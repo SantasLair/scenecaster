@@ -21,4 +21,7 @@ export function newProject(name: string, sceneKey: string, scenePath: string): P
 /** The scene file path for a key, relative to the project root. */
 export const scenePathFor = (key: string) => `${SCENES_DIR}/${key.replace(/[^A-Za-z0-9_-]+/g, '-').toLowerCase()}${SCENE_EXT}`;
 
+/** The first scene of a project whose code gave no scene key to start from. */
+export const DEFAULT_FIRST_SCENE = 'Main';
+
 export const isSceneKey = (key: string) => /^[A-Za-z][\w-]*$/.test(key);

@@ -14,6 +14,7 @@ import ManifestPanel from './components/ManifestPanel';
 import Inspector from './components/Inspector';
 import ProblemsPanel from './components/ProblemsPanel';
 import Icon from './components/Icon';
+import { suggestFirstScene, type FirstSceneSuggestion } from '../../shared/sceneRegistry';
 import ThemeDialog from './components/ThemeDialog';
 import ProjectPanel from './components/ProjectPanel';
 import { ToolBtn, SetupDialog, ScenePicker } from './components/Controls';
@@ -58,6 +59,7 @@ export default function App() {
   const showConsole = () => { dockRef.current?.getPanel('console')?.api.setActive(); };
 
   const [themeOpen, setThemeOpen] = useState(false);
+  const [setupSuggestion, setSetupSuggestion] = useState<FirstSceneSuggestion | null>(null);
   const project = useProject();
   const { projectFolder, pendingSetupFolder } = project;
   const dev = useDevServer({ projectFolder, persistDevScript: project.persistDevScript, showConsole });
@@ -94,7 +96,12 @@ export default function App() {
     const settings = await api.readEditorSettings(folder);
     dev.loadScripts(folder, settings?.devScript);
     project.open(folder);
-    if ((await scene.beginProject(folder)) === 'needs-setup') project.requestSetup(folder);
+    if ((await scene.beginProject(folder)) === 'needs-setup') {
+      // The game's code can suggest the first scene and the canvas size; a failed scan just leaves the defaults.
+      const scan = await api.scanSource(folder).catch(() => null);
+      setSetupSuggestion(scan ? suggestFirstScene(scan.scenes, scan.config) : null);
+      project.requestSetup(folder);
+    }
   };
   const handleOpenProject = () => project.choose(openProject);
   const handleCloseProject = async () => {
@@ -112,11 +119,11 @@ export default function App() {
     scene.endProject();
     project.close();
   };
-  const handleSetupConfirm = (w: number, h: number) => {
+  const handleSetupConfirm = (w: number, h: number, key: string) => {
     const folder = pendingSetupFolder;
     if (!folder) return;
     project.cancelSetup();
-    scene.createProject(folder, w, h);
+    scene.createProject(folder, w, h, key);
   };
 
   const readDroppedAsset = (e: React.DragEvent): AssetPayload | null => {
@@ -251,7 +258,7 @@ export default function App() {
       {themeOpen && <ThemeDialog onClose={() => setThemeOpen(false)} />}
 
       {pendingSetupFolder && (
-        <SetupDialog onConfirm={handleSetupConfirm} onCancel={() => project.cancelSetup()} />
+        <SetupDialog suggestion={setupSuggestion} onConfirm={handleSetupConfirm} onCancel={() => project.cancelSetup()} />
       )}
 
       <header className="toolbar flex h-11 items-center gap-1 px-3 flex-shrink-0">

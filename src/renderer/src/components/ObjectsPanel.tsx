@@ -202,7 +202,7 @@ function Menu({ menu, parentId, canAct, onClose, onAdd, onRename, onDuplicate, o
   const top = Math.min(menu.y, window.innerHeight - (menu.mode === 'add' ? 140 : 190));
   return (
     <div style={{ left, top }} onMouseDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()}
-      className="fixed z-50 min-w-40 py-1 rounded text-xs bg-gray-800 border border-gray-700 shadow-lg shadow-black/40">
+      className="fixed z-[2000] min-w-40 py-1 rounded text-xs bg-gray-800 border border-gray-700 shadow-lg shadow-black/40">
       {menu.mode === 'add' ? adds : (
         <>
           <div className="relative group/add">
