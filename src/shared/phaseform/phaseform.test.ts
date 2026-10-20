@@ -97,6 +97,13 @@ describe('validation', () => {
     expect(validateScene(dup).map(p => p.message)).toContain('Duplicate id "x".');
   });
 
+  it('accepts anchors on root objects, warns on a container child and rejects unknown edges', () => {
+    const root = { ...newScene('Main'), objects: [{ id: 'hud', type: 'container', anchor: { x: 'right' }, children: [img('kid', { anchor: { y: 'bottom' } })] }] };
+    expect(validateScene(root)).toEqual([{ level: 'warning', message: '"kid": anchor is ignored on a child of "hud" (anchors apply to root objects).' }]);
+    const bad = { ...newScene('Main'), objects: [img('a', { anchor: { x: 'middle' } })] };
+    expect(validateScene(bad).some(p => p.level === 'error')).toBe(true);
+  });
+
   it('reports project problems the schema cannot express', () => {
     const p = { ...project, entry: 'Missing', scenes: [...project.scenes, { key: 'Main', path: 'scenes/other.phaseform.json' }] };
     const msgs = validateProject(p).map(x => x.message);

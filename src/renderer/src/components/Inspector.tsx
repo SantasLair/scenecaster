@@ -166,7 +166,12 @@ function Field({ def, obj, textureKeys, fontKeys, assets, onChange, onCommit }: 
 }) {
   const raw = getAt(obj, def.path);
   const present = raw !== undefined;
-  const set = (v: unknown, commit = false) => onChange(setAt(obj, def.path, v), commit);
+  const set = (v: unknown, commit = false) => {
+    const patch = setAt(obj, def.path, v);
+    // Clearing the last anchor axis removes the (now empty) anchor object.
+    const a = patch.anchor;
+    onChange(def.path[0] === 'anchor' && a && typeof a === 'object' && Object.keys(a).length === 0 ? { anchor: undefined } : patch, commit);
+  };
   const reset = !def.required && present ? () => set(undefined, true) : undefined;
   const label = def.path.length > 2 || def.when ? `  ${def.label}` : def.label;
   const row = (control: ReactNode, opts: { tall?: boolean; noReset?: boolean } = {}) => (

@@ -69,7 +69,8 @@ Detail and field mapping are in [PLAN-PHASEFORM-GODOT-UI.md](PLAN-PHASEFORM-GODO
 | Object kinds | `sprite`, `primitive` | image, sprite, text, bitmapText, tileSprite, 7 shapes, container |
 | Rotation/scale/origin | `rotation`, `scaleX/Y`, `originX/Y` | `rotation`, `scale` and `origin` as vec2; no origin on containers |
 | Assets | path in `asset` | `key` into the project's asset manifest |
-| `anchor`, `interactive` | core fields | not in the spec |
+| `anchor` | core field | in the spec since the 0.2 loader, root objects only |
+| `interactive` | core field | not in the spec |
 | Files | `scenecaster/scenes/*.scene.json`, `project.json` | `*.phaseform.json`, `phaseform.project.json` |
 | Rendering | the editor's own objects | `phaseform-loader` |
 
@@ -77,7 +78,7 @@ Decisions assumed in this revision (change them here if wrong; the PHASEFORM pla
 
 - **PHASEFORM replaces v1.** Do not maintain both. A one-time `.scene.json` to `.phaseform.json` migration is provided.
 - **Unique, code-identifier names stay**, using PHASEFORM's `name` field, enforced by a Scenecaster validation rule.
-- **`anchor` and `interactive` stay editor-side for now**, in the editor sidecar (the PHASEFORM project doc calls for a separate sidecar spec), and are proposed upstream as a spec change. `anchor` changes how x/y are stored, so it applies to top-level objects only until the spec decides.
+- **`anchor` is now in the spec** (loader 0.2.0, root objects only; `x` and `y` stay the position at the design size). **`interactive` stays editor-side for now**, in the editor sidecar (the PHASEFORM project doc calls for a separate sidecar spec), and is proposed upstream as a spec change.
 - **Scene file location follows the PHASEFORM convention** (`scenes/*.phaseform.json` next to `phaseform.project.json`); Scenecaster keeps only editor-only data in its own `scenecaster/` folder.
 - **Godot reference theme: Modern** (the 4.8 default); check how it looks before committing.
 
@@ -105,7 +106,7 @@ Built on the v1 format. Anything format-specific is redone in Phase 2; the edito
 
 ### Phase 2: Adopt PHASEFORM (format track, first)
 Phase A of the PHASEFORM plan. The riskiest piece is the viewport; the rest follows from it.
-- [x] **S** Add `phaseform-loader` as a dependency (published to npm, `^0.1.0`).
+- [x] **S** Add `phaseform-loader` as a dependency (published to npm; now `^0.2.0`, which adds anchors, with the vendored scene schema updated to match).
 - [x] **M** Viewport builds the whole scene document through the loader (containers, text, shapes, tileSprites, filters; a failing object becomes a placeholder), with gizmos that work through parent transforms.
 - [x] **M** **Tree model:** the scene is a tree; undo is snapshot-based; the Objects panel supports nesting, drag-reparent, rename, duplicate, lock and visibility.
 - [x] **M** **Inspector** driven by a per-type field table (`inspectorFields.ts`) with raw-JSON editing for anything it does not know. *(Table-driven rather than generated from the JSON schema.)*
@@ -113,7 +114,7 @@ Phase A of the PHASEFORM plan. The riskiest piece is the viewport; the rest foll
 - [~] **M** Read and write `phaseform.project.json`: scene list and asset manifest are read, a dropped image is added to the manifest, new scenes are registered. The model can now edit, rename (rewriting references in the open scene and the project) and remove manifest entries (`shared/phaseform/assets.ts`, `sceneModel.ts`). A "Project Assets" panel (`ManifestPanel.tsx`) edits entries: key, image/spritesheet type, file paths, frame size, margin, spacing, audio urls and raw JSON for unknown types, all undoable. The panel and the Inspector's Frame field show the sheet with its frame grid (`SheetPreview.tsx`, layout maths in `shared/phaseform/sheet.ts`); clicking a frame in the Inspector sets the object's `frame`. An "Animations" panel (`AnimationsPanel.tsx`, `shared/phaseform/animations.ts`) creates, edits, renames and removes animations (frames picked from the sheet grid, frame rate, repeat, yoyo, live preview), and a sprite's Inspector has an Animation picker. Renaming an asset also rewrites the other scene files on the next save (pending renames are part of the undo snapshot). Not yet: adding atlas, font or audio entries by hand in the panel.
 - [x] **M** ~~v1 migration~~ Dropped: no backward compatibility with the flat format was wanted. Port round-trip checks from the PHASEFORM conformance suite is still open.
 - [~] **S** Objects have a unique `id` (enforced) and an optional `name`; the old identifier-name rule is gone with the flat format.
-- [ ] **S** Propose `anchor` and `interactive` to the PHASEFORM spec, and store them in the editor sidecar meanwhile.
+- [~] **S** `anchor` is in the spec and the Inspector edits it (root objects only, warning for container children). Still to do: propose `interactive` upstream and store it in the editor sidecar meanwhile.
 - [x] **S** `SCENE_FORMAT.md` is now a short pointer to the PHASEFORM spec plus Scenecaster's rules.
 
 ### Phase 3: Godot look and feel (look track)
@@ -159,7 +160,7 @@ Most types arrive with Phase 2 (the loader builds them); this phase adds editor 
 - [ ] **M** **Containers:** nesting and local transforms in the gizmos.
 - [ ] **M** Text and bitmapText; shapes (7); tileSprite; nine-slice if the spec adds it.
 - [ ] **S** **Button** object (image or panel plus optional label, `interactive` on, a name that is the code contract). No behaviour; the AI wires the clicks.
-- [ ] **M** **Anchors for UI scenes** as editor data (see Phase 2), previewed at a few canvas sizes.
+- [~] **M** **Anchors for UI scenes.** Done: the Inspector picker and the validation warning. Still to do: preview at a few canvas sizes (call the loader's `layout(width, height)` for a chosen size; the viewport draws the design size today).
 - [ ] **M** Animations (defined in the project file).
 - [ ] **M** Filters and masks with live preview.
 - [ ] **S** Attaching scripts by path.
@@ -203,7 +204,7 @@ Visual physics editor, particle editor, tile/hex map painting (the target games 
 
 ## Risks and open decisions
 
-- **Tree versus flat.** Gizmo math, undo, anchors and drag-reorder assume a flat list. Containers need parent transforms while dragging, and anchors are ambiguous for nested objects (limit them to top-level objects).
+- **Tree versus flat.** Gizmo math, undo, anchors and drag-reorder assume a flat list. Containers need parent transforms while dragging, and anchors are ambiguous for nested objects (the spec limits them to root objects).
 - **Spec instability.** PHASEFORM is draft v0.1: fields may still change. Expect to change both repos together; new behaviour goes into the spec first. Pin the loader version and re-run the conformance cases on each bump.
 - **Published packages are partial.** Only `phaseform-loader` is on npm. The CLI needs the schemas bundled and the Vite plugin needs a real dependency on the CLI before either can be published; Phases 2 (inspector, validation) and 5 depend on that.
 - **Phaser 3 is out.** One target project is on Phaser 3.90, which PHASEFORM does not support.

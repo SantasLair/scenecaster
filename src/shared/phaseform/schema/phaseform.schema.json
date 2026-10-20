@@ -27,7 +27,7 @@
         "height": { "type": "number", "exclusiveMinimum": 0 }
       },
       "additionalProperties": true,
-      "description": "Game size in pixels (the Phaser game config width and height). All scenes in a game should agree."
+      "description": "Design size in pixels: the size the layout was authored at. For a fixed-size game, the game size (the Phaser game config width and height). All scenes in a game should agree."
     },
     "background": {
       "type": "string",
@@ -63,6 +63,16 @@
       "additionalProperties": true
     },
 
+    "anchor": {
+      "type": "object",
+      "properties": {
+        "x": { "enum": ["left", "center", "right"], "default": "left" },
+        "y": { "enum": ["top", "center", "bottom"], "default": "top" }
+      },
+      "additionalProperties": true,
+      "description": "Which edges of the game a root object stays pinned to when the game size differs from the scene's size. x and y stay the position at the design size. Ignored, with a loader warning, on a child of a container. See docs/SPEC.md (Anchors)."
+    },
+
     "color": {
       "type": "string",
       "pattern": "^#[0-9a-fA-F]{6}$",
@@ -96,6 +106,7 @@
         "name": { "type": "string", "default": "" },
         "x": { "type": "number", "default": 0 },
         "y": { "type": "number", "default": 0 },
+        "anchor": { "$ref": "#/$defs/anchor" },
         "depth": {
           "type": "number",
           "default": 0,

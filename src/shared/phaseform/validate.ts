@@ -71,6 +71,10 @@ export function validateScene(scene: unknown): Problem[] {
     for (let p = entries.find(e => e.obj === target)?.parent ?? null; p; p = entries.find(e => e.obj === p)?.parent ?? null) chain.push(p.id);
     return chain;
   };
+  // Anchors follow the game's edges, so they only make sense on root objects: a container's children follow the container.
+  for (const { obj, parent } of entries) {
+    if (parent && obj.anchor !== undefined) problems.push({ level: 'warning', message: `"${obj.id}": anchor is ignored on a child of "${parent.id}" (anchors apply to root objects).` });
+  }
   for (const { obj } of entries) {
     for (const f of filtersOf(obj)) {
       for (const field of REF_FIELDS[String(f.type)] ?? []) {

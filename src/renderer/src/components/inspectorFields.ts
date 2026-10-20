@@ -64,6 +64,9 @@ export const FIELDS: readonly FieldDef[] = [
   f({ path: ['rotation'], label: 'Rotation (deg)', section: 'Transform', kind: 'angle', step: 1, def: 0, types: SCALABLE }),
   f({ path: ['scale'], label: 'Scale', section: 'Transform', kind: 'vec2', step: 0.05, def: { x: 1, y: 1 }, types: SCALABLE }),
   f({ path: ['origin'], label: 'Origin', section: 'Transform', kind: 'vec2', step: 0.05, min: 0, max: 1, def: { x: 0.5, y: 0.5 }, types: ORIGINAL }),
+  f({ path: ['anchor', 'x'], label: 'Anchor X', section: 'Transform', kind: 'select', options: ['', 'left', 'center', 'right'], def: 'left', topLevelOnly: true, types: ALL_TYPES,
+    hint: 'Which edge of the game this object follows when the game size differs from the scene size. X and Y stay the position at the scene size.' }),
+  f({ path: ['anchor', 'y'], label: 'Anchor Y', section: 'Transform', kind: 'select', options: ['', 'top', 'center', 'bottom'], def: 'top', topLevelOnly: true, types: ALL_TYPES }),
 
   // Appearance
   f({ path: ['alpha'], label: 'Alpha', section: 'Appearance', kind: 'number', min: 0, max: 1, step: 0.05, def: 1, types: ALL_TYPES }),

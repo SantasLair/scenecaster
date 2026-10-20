@@ -21,4 +21,8 @@ Opening a project writes nothing. A folder without `phaseform.project.json` gets
 
 ## Not in PHASEFORM, not in the editor (yet)
 
-`anchor`, `interactive`, per-object lock and the editor camera are not part of the format. Locking is session-only. See [ROADMAP.md](ROADMAP.md) for how editor-only data is planned.
+`interactive`, per-object lock and the editor camera are not part of the format. Locking is session-only. See [ROADMAP.md](ROADMAP.md) for how editor-only data is planned.
+
+## Anchors (PHASEFORM 0.2 loader)
+
+A root object can carry `anchor: { x: left|center|right, y: top|center|bottom }`. `x` and `y` always stay the position at the scene's design `size`, so the editor draws every scene at its design size and writes no converted values. The Inspector has an Anchor X and Anchor Y picker for root objects; clearing both removes the field. Anchors on a container's children are ignored by the loader, so the editor warns and hides the picker for them. The game calls the loader's `layout(width, height)` after `build` and from its resize handler; the editor never does.

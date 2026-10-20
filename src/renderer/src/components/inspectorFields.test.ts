@@ -25,6 +25,16 @@ describe('fieldsFor', () => {
     expect(keys('image', true).has('depth')).toBe(true);
     expect(keys('image', false).has('depth')).toBe(false);
   });
+  it('limits anchors to top-level objects and offers both axes', () => {
+    expect(fieldsFor('image', true).filter(d => d.path[0] === 'anchor').map(d => d.path.join('.'))).toEqual(['anchor.x', 'anchor.y']);
+    expect(keys('image', false).has('anchor')).toBe(false);
+    expect(keys('container', true).has('anchor')).toBe(true);
+  });
+  it('writes one anchor axis and keeps the other', () => {
+    const o: PfObject = { id: 'a', type: 'image', key: 'k', anchor: { y: 'bottom' } };
+    expect(setAt(o, ['anchor', 'x'], 'right')).toEqual({ anchor: { y: 'bottom', x: 'right' } });
+    expect(setAt(o, ['anchor', 'y'], undefined)).toEqual({ anchor: {} });
+  });
   it('gives bitmap text no flip', () => {
     expect(keys('bitmapText').has('font')).toBe(true);
     expect(keys('bitmapText').has('flipX')).toBe(false);

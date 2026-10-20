@@ -409,7 +409,7 @@ class EditorScene extends Phaser.Scene {
   private buildScene(scene: PfScene, animations: unknown[], warnings: string[]) {
     const objects = Array.isArray(scene.objects) ? scene.objects : [];
     for (const { obj } of walk(objects)) this.typeById.set(obj.id, obj.type);
-    const keep = (w: string) => !/: script ".*" not provided$/.test(w);
+    const keep = (w: string) => !/: script ".*" not provided$/.test(w) && !/: anchor ignored on a container child$/.test(w);
 
     // Whole document first, so references between objects (masks, light sources) resolve; per object if that throws.
     // The background is left out: the loader would set it on the camera, flooding the editor around the canvas.
