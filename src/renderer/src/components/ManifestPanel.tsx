@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import type { PfAsset, PfProject } from '../../../shared/phaseform/types';
-import { usesOfAsset } from '../sceneModel';
 import SheetPreview from './SheetPreview';
 import { JsonBox, NumberInput, Row, inputCls } from './Inspector';
 
@@ -12,6 +11,8 @@ interface Props {
   /** False if the new key is empty or taken. */
   onRename(oldKey: string, newKey: string): boolean;
   onRemove(key: string): void;
+  /** Everywhere the key is used, across all scene files. */
+  onFindUses(key: string): Promise<string[]>;
 }
 
 interface FieldDef { name: string; label: string; kind: 'path' | 'int'; min?: number; def?: number; required?: boolean; hint?: string }
@@ -76,7 +77,7 @@ export function KeyField({ keyName, onRename, hint = 'Renaming also updates the 
   );
 }
 
-function AssetEditor({ asset, onUpdate, onCommit, onRename, onRemove }: Omit<Props, 'project'> & { asset: PfAsset }) {
+function AssetEditor({ asset, onUpdate, onCommit, onRename, onRemove, onFindUses }: Omit<Props, 'project'> & { asset: PfAsset }) {
   const fields = FIELDS[asset.type];
   const patch = (p: Record<string, unknown>, commit = false) => onUpdate(asset.key, p, commit);
 
@@ -85,8 +86,8 @@ function AssetEditor({ asset, onUpdate, onCommit, onRename, onRemove }: Omit<Pro
     else patch({ type, frameWidth: undefined, frameHeight: undefined, margin: undefined, spacing: undefined, startFrame: undefined, endFrame: undefined, frames: undefined }, true);
   };
 
-  const remove = () => {
-    const uses = usesOfAsset(asset.key);
+  const remove = async () => {
+    const uses = await onFindUses(asset.key);
     const detail = uses.length ? `\n\nStill used by:\n- ${uses.slice(0, 8).join('\n- ')}${uses.length > 8 ? `\n- and ${uses.length - 8} more` : ''}\n\nThey will show a missing-asset warning.` : '';
     if (window.confirm(`Remove "${asset.key}" from the project's asset list?\nThe file itself is not deleted.${detail}`)) onRemove(asset.key);
   };
@@ -142,7 +143,7 @@ function AssetEditor({ asset, onUpdate, onCommit, onRename, onRemove }: Omit<Pro
   );
 }
 
-export default function ManifestPanel({ project, onUpdate, onCommit, onRename, onRemove }: Props) {
+export default function ManifestPanel({ project, onUpdate, onCommit, onRename, onRemove, onFindUses }: Props) {
   const [selected, setSelected] = useState<string | null>(null);
   const assets = project?.assets ?? [];
   const asset = assets.find(a => a.key === selected) ?? null;
@@ -176,7 +177,7 @@ export default function ManifestPanel({ project, onUpdate, onCommit, onRename, o
       </div>
       <div className="flex-1 overflow-y-auto min-h-0">
         {asset
-          ? <AssetEditor key={asset.key} asset={asset} onUpdate={onUpdate} onCommit={onCommit} onRename={(o, n) => { const ok = onRename(o, n); if (ok) setSelected(n); return ok; }} onRemove={onRemove} />
+          ? <AssetEditor key={asset.key} asset={asset} onUpdate={onUpdate} onCommit={onCommit} onRename={(o, n) => { const ok = onRename(o, n); if (ok) setSelected(n); return ok; }} onRemove={onRemove} onFindUses={onFindUses} />
           : <p className="text-xs text-gray-500 text-center p-6">Select an asset to edit it.</p>}
       </div>
     </div>

@@ -68,7 +68,7 @@ export default function App() {
   });
   const {
     scenes, sceneKey, openScene, openSceneFile, moveObject, canvasSize, selectedObject, lockedIds, toolMode, saveStatus, saveBlocked, sceneStatus, createScene, problems,
-    addObject, dropAsset, importAssets, updateAssetField, renameAsset, removeAsset, addAnimation, updateAnimationField, renameAnimation, removeAnimation, setTool, toggleSnap, undo, redo, updateField, commitEdit, selectObject,
+    addObject, dropAsset, importAssets, updateAssetField, renameAsset, removeAsset, findAssetUses, addAnimation, updateAnimationField, renameAnimation, removeAnimation, setTool, toggleSnap, undo, redo, updateField, commitEdit, selectObject,
     deleteObject, duplicateObject, renameObject, toggleVisible, toggleLocked, handleSave,
   } = scene;
   const textureKeys = (scene.project?.assets ?? []).filter(a => ['image', 'spritesheet', 'atlas'].includes(a.type)).map(a => a.key);
@@ -171,7 +171,7 @@ export default function App() {
       <AssetBrowser projectFolder={projectFolder} onOpenProject={handleOpenProject} onDragAsset={() => setIsDraggingAsset(true)} onImport={importAssets} />
     ),
     manifest: (
-      <ManifestPanel project={scene.project} onUpdate={updateAssetField} onCommit={commitEdit} onRename={renameAsset} onRemove={removeAsset} />
+      <ManifestPanel project={scene.project} onUpdate={updateAssetField} onCommit={commitEdit} onRename={renameAsset} onRemove={removeAsset} onFindUses={findAssetUses} />
     ),
     animations: (
       <AnimationsPanel project={scene.project} onAdd={addAnimation} onUpdate={updateAnimationField} onCommit={commitEdit}

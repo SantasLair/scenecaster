@@ -132,7 +132,7 @@ Step 1 does not depend on Phase 2 and can go first for a quick visible win. Godo
 - [ ] **M** Asset kinds follow PHASEFORM's manifest types: image, spritesheet (frame size, margin, spacing; frames pickable), atlas, bitmapFont, audio (with preview).
 - [ ] **M** **Manifest in `phaseform.project.json`**: key, type, url, frame config. Keys are auto-suggested from the file name and editable. (This replaces the old `scenecaster/assets.json`.)
 - [ ] **S** Rename or move an asset: update the manifest and every scene file, and **list code references** (grep) for the human or AI to fix. It does not edit code.
-- [ ] **S** Delete asset with a usage check; unused and missing asset report; optional size warnings.
+- [~] **S** Delete asset with a usage check (done: the Remove confirmation lists uses in the open scene, the project and every other scene file; not yet: the unused and missing asset report); unused and missing asset report; optional size warnings.
 - [ ] **S** Watch the assets folder.
 
 ### Phase 5: Hand-off to code and adopting existing projects (rebased onto the toolkit)

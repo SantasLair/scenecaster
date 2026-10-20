@@ -12,7 +12,7 @@ import { PROJECT_FILE, formatJson, isSceneKey, newProject, scenePathFor } from '
 import { allIds, cloneWithNewIds, findById, uniqueId } from '../../../shared/phaseform/tree';
 import { checkSceneAgainstProject, validateProject, validateScene } from '../../../shared/phaseform/validate';
 import { planManifestEntries, suggestKey } from '../../../shared/assetImport';
-import { applyRenamesToScene } from '../../../shared/phaseform/assets';
+import { applyRenamesToScene, assetUses } from '../../../shared/phaseform/assets';
 import type { PfAsset } from '../../../shared/phaseform/types';
 import { ADD_LABELS, createImage, createObject, type AddKind } from '../newObjects';
 import * as history from '../history';
@@ -132,6 +132,23 @@ export function useScene({ iframeRef, send, projectFolder, appendLog, showConsol
   };
   const renameAsset = (oldKey: string, newKey: string) => step(() => model.renameAsset(oldKey, newKey));
   const removeAsset = (key: string) => step(() => model.removeAsset(key));
+
+  /** Where an asset is used: the open scene and the project (animations, preload lists), plus every other scene file on disk. */
+  const findAssetUses = async (key: string): Promise<string[]> => {
+    const s = useSceneModel.getState();
+    const uses = model.usesOfAsset(key);
+    if (!projectFolder || !s.project) return uses;
+    for (const entry of s.project.scenes) {
+      if (entry.path === s.scenePath) continue;
+      const r = await api.readScene(projectFolder, entry.path);
+      const parsed = r.ok && r.found ? parseJson<PfScene>(r.text ?? '') : null;
+      if (!parsed?.ok || !Array.isArray(parsed.value?.objects)) continue;
+      // Files on disk still hold keys renamed since the last save.
+      const doc = applyRenamesToScene(parsed.value, s.pendingRenames);
+      for (const u of assetUses(doc, null, key)) uses.push(`${u} in scene "${entry.key}"`);
+    }
+    return uses;
+  };
 
   const addAnimation = (anim: PfAnimation) => step(() => model.addAnimation(anim));
   const updateAnimationField = (key: string, patch: Record<string, unknown>, commit = false) => {
@@ -540,6 +557,6 @@ export function useScene({ iframeRef, send, projectFolder, appendLog, showConsol
     scene, project, scenes, sceneKey, canvasSize, selectedObject, lockedIds, toolMode, saveStatus, saveBlocked: blocked, sceneStatus, problems,
     openScene, openSceneFile, createScene, createProject, beginProject, endProject,
     setTool, toggleSnap, undo, redo, updateField, commitEdit, selectObject,
-    addObject, dropAsset, importAssets, updateAssetField, renameAsset, removeAsset, addAnimation, updateAnimationField, renameAnimation, removeAnimation, deleteObject, duplicateObject, renameObject, toggleVisible, toggleLocked, moveObject, handleSave,
+    addObject, dropAsset, importAssets, updateAssetField, renameAsset, removeAsset, findAssetUses, addAnimation, updateAnimationField, renameAnimation, removeAnimation, deleteObject, duplicateObject, renameObject, toggleVisible, toggleLocked, moveObject, handleSave,
   };
 }
