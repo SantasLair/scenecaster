@@ -3,7 +3,7 @@
 
 export const IMAGE_EXTS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'] as const;
 export const AUDIO_EXTS = ['.mp3', '.ogg', '.wav', '.m4a', '.aac', '.flac'] as const;
-/** Atlas and bitmap-font data files. They are copied but get no manifest entry on their own (they belong to an image). */
+/** Atlas and bitmap-font data files. They get no manifest entry on their own: they join the image with the same name (see planManifestEntries). */
 export const DATA_EXTS = ['.json', '.xml', '.fnt'] as const;
 
 export type ImportKind = 'image' | 'audio' | 'data';
@@ -48,6 +48,44 @@ export function suggestKey(fileName: string, takenKeys: Iterable<string>, fallba
   const stem = cleanFileName(fileName).replace(/\.[^.]+$/, '').replace(/[^\w-]+/g, '_').replace(/^_+|_+$/g, '') || fallback;
   if (!used.has(stem)) return stem;
   for (let i = 2; ; i++) if (!used.has(`${stem}_${i}`)) return `${stem}_${i}`;
+}
+
+export interface CopiedFile { name: string; kind: ImportKind; rel: string }
+
+/** A manifest entry to add; the key is chosen by the caller's `suggestKey` pass so keys stay unique across the batch. */
+export interface PlannedEntry { fileName: string; entry: Record<string, unknown> }
+
+const stemOf = (name: string) => cleanFileName(name).replace(/\.[^.]+$/, '').toLowerCase();
+
+/**
+ * Turns one import batch into manifest entries (without keys). Files that share a stem belong together:
+ * `hero.png` + `hero.json` is an atlas, `font.png` + `font.xml`/`.fnt` is a bitmapFont, `boom.mp3` + `boom.ogg` is one audio entry.
+ * A data file with no image of the same name in the batch gets no entry (it may belong to an image imported earlier).
+ */
+export function planManifestEntries(files: CopiedFile[]): PlannedEntry[] {
+  const dataByStem = new Map<string, CopiedFile>();
+  for (const f of files) if (f.kind === 'data') dataByStem.set(stemOf(f.name), f);
+  const audioByStem = new Map<string, string[]>();
+  const out: PlannedEntry[] = [];
+  for (const f of files) {
+    if (f.kind === 'image') {
+      const data = dataByStem.get(stemOf(f.name));
+      const ext = data ? extOf(data.name) : '';
+      if (data && ext === '.json') out.push({ fileName: f.name, entry: { type: 'atlas', url: f.rel, atlasUrl: data.rel } });
+      else if (data && (ext === '.xml' || ext === '.fnt')) out.push({ fileName: f.name, entry: { type: 'bitmapFont', url: f.rel, dataUrl: data.rel } });
+      else out.push({ fileName: f.name, entry: { type: 'image', url: f.rel } });
+    } else if (f.kind === 'audio') {
+      const stem = stemOf(f.name);
+      const urls = audioByStem.get(stem);
+      if (urls) urls.push(f.rel);
+      else {
+        const list = [f.rel];
+        audioByStem.set(stem, list);
+        out.push({ fileName: f.name, entry: { type: 'audio', urls: list } });
+      }
+    }
+  }
+  return out;
 }
 
 /** A project-relative folder from user input: forward slashes, no empty, `.` or `..` parts. Null if it escapes or is absolute. */

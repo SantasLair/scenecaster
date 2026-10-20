@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cleanFileName, cleanSubfolder, detectAssetsFolder, importKind, suggestKey, uniqueFileName } from './assetImport';
+import { cleanFileName, cleanSubfolder, detectAssetsFolder, importKind, planManifestEntries, suggestKey, uniqueFileName } from './assetImport';
 
 describe('asset import rules', () => {
   it('classifies files by extension, ignoring case', () => {
@@ -28,6 +28,22 @@ describe('asset import rules', () => {
     expect(suggestKey('Hero Sprite (1).png', [])).toBe('Hero_Sprite_1');
     expect(suggestKey('hero.png', ['hero', 'hero_2'])).toBe('hero_3');
     expect(suggestKey('???.png', [])).toBe('asset');
+  });
+
+  it('pairs atlas, font and audio files that share a name into single entries', () => {
+    const f = (name: string, kind: 'image' | 'audio' | 'data', rel = `a/${name}`) => ({ name, kind, rel });
+    const plan = planManifestEntries([
+      f('hero.png', 'image'), f('hero.json', 'data'),
+      f('Mono.png', 'image'), f('mono.fnt', 'data'),
+      f('plain.png', 'image'), f('orphan.json', 'data'),
+      f('boom.mp3', 'audio'), f('boom.ogg', 'audio'),
+    ]);
+    expect(plan.map(p => p.entry)).toEqual([
+      { type: 'atlas', url: 'a/hero.png', atlasUrl: 'a/hero.json' },
+      { type: 'bitmapFont', url: 'a/Mono.png', dataUrl: 'a/mono.fnt' },
+      { type: 'image', url: 'a/plain.png' },
+      { type: 'audio', urls: ['a/boom.mp3', 'a/boom.ogg'] },
+    ]);
   });
 
   it('accepts only project-relative subfolders', () => {

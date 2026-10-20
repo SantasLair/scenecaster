@@ -11,7 +11,8 @@ import type { PfAnimation } from '../../../shared/phaseform/animations';
 import { PROJECT_FILE, formatJson, isSceneKey, newProject, scenePathFor } from '../../../shared/phaseform/format';
 import { allIds, cloneWithNewIds, findById, uniqueId } from '../../../shared/phaseform/tree';
 import { checkSceneAgainstProject, validateProject, validateScene } from '../../../shared/phaseform/validate';
-import { suggestKey } from '../../../shared/assetImport';
+import { planManifestEntries, suggestKey } from '../../../shared/assetImport';
+import type { PfAsset } from '../../../shared/phaseform/types';
 import { ADD_LABELS, createImage, createObject, type AddKind } from '../newObjects';
 import * as history from '../history';
 import * as model from '../sceneModel';
@@ -172,7 +173,8 @@ export function useScene({ iframeRef, send, projectFolder, appendLog, showConsol
 
   /**
    * Copies files into the project folder `destRel` and registers each image and audio file in the manifest (one undo step).
-   * Data files (atlas json, font xml) are only copied: they belong to an image, which the Project Assets panel links them to.
+   * A data file (atlas json, font xml/fnt) imported with an image of the same name makes an atlas or bitmapFont entry;
+   * alone it is only copied. Audio files of the same name (boom.mp3 + boom.ogg) share one entry.
    * Returns the project-relative paths that were copied.
    */
   const importAssets = async (sources: string[], destRel: string): Promise<string[]> => {
@@ -189,11 +191,9 @@ export function useScene({ iframeRef, send, projectFolder, appendLog, showConsol
     if (failed.length) showConsole();
     const copied = r.results.filter(x => x.rel && x.kind);
     step(() => {
-      for (const x of copied) {
-        if (x.kind === 'data') continue;
+      for (const p of planManifestEntries(copied.map(x => ({ name: x.name, kind: x.kind!, rel: x.rel! })))) {
         const keys = (useSceneModel.getState().project?.assets ?? []).map(a => a.key);
-        const key = suggestKey(x.name, keys, x.kind);
-        model.addAsset(x.kind === 'audio' ? { key, type: 'audio', urls: [x.rel!] } : { key, type: 'image', url: x.rel! });
+        model.addAsset({ key: suggestKey(p.fileName, keys, String(p.entry.type)), ...p.entry } as PfAsset);
       }
     });
     if (copied.length) note(`Imported ${copied.length} file${copied.length === 1 ? '' : 's'} into ${destRel}.`);
