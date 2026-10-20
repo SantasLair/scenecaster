@@ -11,7 +11,7 @@ export type IconName =
   | 'ToolSelect' | 'ToolMove' | 'ToolRotate' | 'ToolScale' | 'Play' | 'Stop' | 'Save' | 'Snap' | 'Reload' | 'Folder'
   | 'GuiClose' | 'Environment' | 'Window' | 'Lock' | 'Unlock' | 'GuiVisibilityVisible' | 'GuiVisibilityHidden' | 'UndoRedo' | 'Script'
   | 'Node2D' | 'Sprite2D' | 'Label' | 'ColorRect' | 'Polygon2D' | 'Line2D' | 'TextureRect' | 'TileMapLayer' | 'AnimatedSprite2D'
-  | 'GuiTreeArrowRight' | 'GuiTreeArrowDown' | 'Add' | 'Duplicate';
+  | 'GuiTreeArrowRight' | 'GuiTreeArrowDown' | 'Add' | 'Duplicate' | 'ReloadSmall';
 
 /** A 16px Godot icon that takes the text colour. The SVG text comes from our own bundled files, never from user data. */
 export default function Icon({ name, size = 16, flipX }: { name: IconName; size?: number; flipX?: boolean }) {

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import SheetPreview from './SheetPreview';
+import Icon from './Icon';
 import type { PfAsset, PfObject } from '../../../shared/phaseform/types';
 import {
   advancedKeys, degToRad, getAt, isHexColor, parseNumStr, pointCount, radToDeg, sectionsFor, setAt,
@@ -25,19 +26,27 @@ interface Props {
   onDelete(): void;
 }
 
-export const inputCls = 'bg-gray-900 border border-gray-700 rounded px-2 py-0.5 text-xs text-white focus:outline-none focus:border-blue-500';
+export const inputCls = 'bg-gray-950 border border-gray-700 rounded px-2 py-0.5 text-xs text-white focus:outline-none focus:border-blue-500';
 
 const fmt = (v: number) => String(Number(v.toFixed(4)));
 
 // ---------------------------------------------------------------- primitives
 
-export function NumberInput({ value, def, min, max, step, int, width = 'w-24', onValue, onCommit }: {
+/** Pixels the pointer must travel before a press on a number turns from a click (edit the text) into a scrub. */
+const SCRUB_THRESHOLD = 3;
+
+/**
+ * A number field like Godot's: click to type, drag sideways to change the value by `step` per pixel (hold Shift for a tenth
+ * of that). The value is committed (one undo step) when the drag ends.
+ */
+export function NumberInput({ value, def, min, max, step, int, width = 'flex-1 min-w-0', onValue, onCommit }: {
   value: number | undefined; def: number; min?: number; max?: number; step?: number; int?: boolean; width?: string;
   onValue(v: number): void; onCommit(): void;
 }) {
   const shown = value ?? def;
   const [text, setText] = useState(fmt(shown));
   const focused = useRef(false);
+  const scrub = useRef<{ x: number; start: number; active: boolean } | null>(null);
   useEffect(() => { if (!focused.current) setText(fmt(shown)); }, [shown]);
   const clamp = (v: number) => {
     let r = int ? Math.round(v) : v;
@@ -45,8 +54,33 @@ export function NumberInput({ value, def, min, max, step, int, width = 'w-24', o
     if (max !== undefined) r = Math.min(max, r);
     return r;
   };
+  const perPixel = step ?? (int ? 1 : 0.01);
   return (
     <input type="number" value={text} min={min} max={max} step={step ?? (int ? 1 : 0.01)}
+      title="Drag sideways to change the value; click to type"
+      onPointerDown={e => {
+        if (focused.current || e.button !== 0) return;
+        e.preventDefault(); // no focus yet: a click without a drag focuses on release
+        e.currentTarget.setPointerCapture(e.pointerId);
+        scrub.current = { x: e.clientX, start: shown, active: false };
+      }}
+      onPointerMove={e => {
+        const s = scrub.current;
+        if (!s) return;
+        const dx = e.clientX - s.x;
+        if (!s.active && Math.abs(dx) < SCRUB_THRESHOLD) return;
+        s.active = true;
+        const v = clamp(Number((s.start + dx * perPixel * (e.shiftKey ? 0.1 : 1)).toFixed(4)));
+        setText(fmt(v));
+        onValue(v);
+      }}
+      onPointerUp={e => {
+        const s = scrub.current;
+        scrub.current = null;
+        if (!s) return;
+        if (s.active) onCommit();
+        else { e.currentTarget.focus(); e.currentTarget.select(); }
+      }}
       onFocus={() => { focused.current = true; }}
       onChange={e => {
         setText(e.target.value);
@@ -55,7 +89,7 @@ export function NumberInput({ value, def, min, max, step, int, width = 'w-24', o
       }}
       onBlur={() => { focused.current = false; setText(fmt(value ?? def)); onCommit(); }}
       onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-      className={`${width} text-right ${inputCls}`} />
+      className={`${width} text-right ${inputCls} [&:not(:focus)]:cursor-ew-resize`} />
   );
 }
 
@@ -134,16 +168,39 @@ export function Row({ label, children, onReset, hint, tall }: {
 }) {
   return (
     <div className="mb-0.5">
-      <div className={`flex justify-between py-1 gap-2 ${tall ? 'items-start' : 'items-center'}`}>
-        <span className="text-xs text-gray-400 w-28 flex-shrink-0 truncate" title={label}>{label}</span>
-        <div className="flex items-center gap-1 min-w-0 flex-1 justify-end">
+      <div className={`flex py-0.5 gap-2 ${tall ? 'items-start' : 'items-center'}`}>
+        <span className="text-xs text-gray-400 basis-2/5 flex-shrink-0 truncate" title={label}>{label}</span>
+        <div className="flex items-center gap-1 min-w-0 flex-1">
           {children}
-          <button onClick={onReset} disabled={!onReset} title="Remove this field (use the default)"
-            className={`w-4 text-center text-[11px] leading-none flex-shrink-0 ${onReset ? 'text-gray-500 hover:text-white' : 'invisible'}`}>×</button>
+          <button onClick={onReset} disabled={!onReset} title="Reset to the default (removes this field)"
+            className={`flex-shrink-0 text-gray-500 hover:text-[var(--gd-accent)] ${onReset ? '' : 'invisible'}`}>
+            <Icon name="ReloadSmall" size={14} />
+          </button>
         </div>
       </div>
-      {hint && <div className="text-[10px] text-gray-600 -mt-0.5">{hint}</div>}
+      {hint && <div className="text-[10px] text-gray-600 pl-[40%]">{hint}</div>}
     </div>
+  );
+}
+
+/** Sections the user collapsed; kept across selections so the Inspector stays the way they left it. */
+const collapsedSections = new Set<string>();
+
+/** A titled group of rows that folds away, like Godot's inspector categories. */
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  const [open, setOpen] = useState(!collapsedSections.has(title));
+  const toggle = () => {
+    if (open) collapsedSections.add(title); else collapsedSections.delete(title);
+    setOpen(!open);
+  };
+  return (
+    <section>
+      <button onClick={toggle} aria-expanded={open}
+        className="w-full flex items-center gap-1 px-1.5 py-1 mb-1 rounded bg-gray-800 text-xs font-medium text-gray-300 hover:text-white">
+        <Icon name={open ? 'GuiTreeArrowDown' : 'GuiTreeArrowRight'} size={12} />{title}
+      </button>
+      {open && <div className="px-1">{children}</div>}
+    </section>
   );
 }
 
@@ -224,8 +281,8 @@ function Field({ def, obj, textureKeys, fontKeys, assets, onChange, onCommit }: 
         set({ ...(typeof raw === 'object' && raw ? raw : {}), x: num('x') ?? d.x, y: num('y') ?? d.y, [k]: v });
       return row(
         <>
-          <NumberInput value={num('x')} def={d.x} min={def.min} max={def.max} step={def.step} width="w-16" onValue={v => edit('x', v)} onCommit={onCommit} />
-          <NumberInput value={num('y')} def={d.y} min={def.min} max={def.max} step={def.step} width="w-16" onValue={v => edit('y', v)} onCommit={onCommit} />
+          <NumberInput value={num('x')} def={d.x} min={def.min} max={def.max} step={def.step} onValue={v => edit('x', v)} onCommit={onCommit} />
+          <NumberInput value={num('y')} def={d.y} min={def.min} max={def.max} step={def.step} onValue={v => edit('y', v)} onCommit={onCommit} />
         </>);
     }
     case 'numstr': {
@@ -289,9 +346,8 @@ export default function Inspector({ object, textureKeys, fontKeys, assets, anima
   const advanced = advancedKeys(object, isTopLevel);
 
   return (
-    <div key={object.id} className="p-3 space-y-4 text-sm">
-      <section>
-        <div className="section-label mb-2">Identity</div>
+    <div key={object.id} className="p-2 space-y-2 text-sm">
+      <Section title="Identity">
         <div className="bg-gray-900 rounded px-3 py-2 mb-1.5 flex items-center gap-2">
           <div className="min-w-0 flex-1">
             <div className="text-[10px] text-gray-500 mb-0.5">ID &middot; {object.type}</div>
@@ -303,16 +359,15 @@ export default function Inspector({ object, textureKeys, fontKeys, assets, anima
           <Field key={def.path.join('.') + def.kind} def={def} obj={object} textureKeys={textureKeys} fontKeys={fontKeys} assets={assets}
             onChange={onChange} onCommit={onCommit} />
         ))}
-      </section>
+      </Section>
 
       {sections.filter(([s]) => s !== 'Identity').map(([section, defs]) => (
-        <section key={section}>
-          <div className="section-label mb-2">{section}</div>
+        <Section key={section} title={section}>
           {defs.filter(d => !d.when || d.when(object)).map(def => (
             <Field key={def.path.join('.') + def.kind} def={def} obj={object} textureKeys={textureKeys} fontKeys={fontKeys} assets={assets}
               onChange={onChange} onCommit={onCommit} />
           ))}
-        </section>
+        </Section>
       ))}
 
       {object.type === 'sprite' && (() => {
@@ -320,8 +375,7 @@ export default function Inspector({ object, textureKeys, fontKeys, assets, anima
         const cur = typeof anim?.key === 'string' ? anim.key : '';
         const missing = cur !== '' && !animationKeys.includes(cur);
         return (
-          <section>
-            <div className="section-label mb-2">Animation</div>
+          <Section title="Animation">
             <Row label="Plays" hint="Define animations in the Animations panel. Play options stay in the raw JSON below.">
               <select value={cur} onChange={e => onChange({ animation: e.target.value === '' ? undefined : { ...anim, key: e.target.value } }, true)}
                 className={`flex-1 min-w-0 ${inputCls} ${missing ? '!border-red-600 text-red-300' : ''}`}>
@@ -330,13 +384,12 @@ export default function Inspector({ object, textureKeys, fontKeys, assets, anima
                 {animationKeys.map(k => <option key={k} value={k}>{k}</option>)}
               </select>
             </Row>
-          </section>
+          </Section>
         );
       })()}
 
       {advanced.length > 0 && (
-        <section>
-          <div className="section-label mb-2">Advanced</div>
+        <Section title="Advanced">
           <div className="text-[10px] text-gray-600 mb-2">Raw JSON. Applied when you leave the box; invalid JSON is rejected. Empty removes the field.</div>
           {advanced.map(k => (
             <div key={k} className="mb-2">
@@ -344,7 +397,7 @@ export default function Inspector({ object, textureKeys, fontKeys, assets, anima
               <JsonBox value={object[k]} onApply={v => onChange({ [k]: v }, true)} />
             </div>
           ))}
-        </section>
+        </Section>
       )}
 
       <button onClick={onDelete}
