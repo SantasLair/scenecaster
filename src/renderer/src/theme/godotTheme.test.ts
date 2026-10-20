@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deriveTheme, PRESETS } from './godotTheme';
+import { deriveTheme, fromHex, presetName, PRESETS, toHex } from './godotTheme';
 
 const rgb = (s: string) => (s.match(/\d+/g) ?? []).slice(0, 3).map(Number);
 
@@ -28,5 +28,17 @@ describe('deriveTheme', () => {
   });
   it('cannot lighten a black base', () => {
     expect(rgb(deriveTheme(PRESETS.Black)['--gd-surface-high'])).toEqual([0, 0, 0]);
+  });
+});
+
+describe('hex and presets', () => {
+  it('round-trips #rrggbb and rejects anything else', () => {
+    expect(toHex(fromHex('#569eff')!)).toBe('#569eff');
+    expect(fromHex('569eff')).toBeNull();
+    expect(fromHex('#fff')).toBeNull();
+  });
+  it('names a matching preset and reports a custom theme as null', () => {
+    for (const n of Object.keys(PRESETS)) expect(presetName(PRESETS[n])).toBe(n);
+    expect(presetName({ ...PRESETS.Default, contrast: 0.4 })).toBeNull();
   });
 });

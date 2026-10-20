@@ -55,6 +55,21 @@ export const PRESETS: Record<string, ThemeInput> = {
 };
 export const DEFAULT_PRESET = 'Default';
 
+export const toHex = (c: Rgba) => '#' + [c.r, c.g, c.b].map(v => Math.round(clamp(v) * 255).toString(16).padStart(2, '0')).join('');
+/** Parses `#rrggbb`; null for anything else. */
+export function fromHex(hex: string): Rgba | null {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex);
+  if (!m) return null;
+  const n = parseInt(m[1], 16);
+  return rgba(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255);
+}
+export const CONTRAST_RANGE = { min: -0.2, max: 0.5 };
+/** The name of the preset a theme matches (to within a colour step), or null for a custom theme. */
+export function presetName(t: ThemeInput): string | null {
+  const same = (a: Rgba, b: Rgba) => toHex(a) === toHex(b);
+  return Object.keys(PRESETS).find(n => same(PRESETS[n].base, t.base) && same(PRESETS[n].accent, t.accent) && Math.abs(PRESETS[n].contrast - t.contrast) < 0.005) ?? null;
+}
+
 /** Sizes from Godot's Modern theme at the Default spacing preset, in px. */
 export const SIZES = { radius: 4, space: 4, inputX: 8, inputY: 4, buttonX: 8, buttonY: 6, treeRowY: 3, tabX: 16, tabY: 8 };
 

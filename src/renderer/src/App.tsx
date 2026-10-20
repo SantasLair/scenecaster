@@ -13,6 +13,7 @@ import AnimationsPanel from './components/AnimationsPanel';
 import ManifestPanel from './components/ManifestPanel';
 import Inspector from './components/Inspector';
 import ProblemsPanel from './components/ProblemsPanel';
+import ThemeDialog from './components/ThemeDialog';
 import ProjectPanel from './components/ProjectPanel';
 import { ToolBtn, SetupDialog, ScenePicker } from './components/Controls';
 import Dock, { DockContext, resetLayout, type DockCtx } from './Dock';
@@ -55,6 +56,7 @@ export default function App() {
 
   const showConsole = () => { dockRef.current?.getPanel('console')?.api.setActive(); };
 
+  const [themeOpen, setThemeOpen] = useState(false);
   const project = useProject();
   const { projectFolder, pendingSetupFolder } = project;
   const dev = useDevServer({ projectFolder, persistDevScript: project.persistDevScript, showConsole });
@@ -245,6 +247,8 @@ export default function App() {
   return (
     <div className="flex h-screen w-screen flex-col bg-gray-900 text-white select-none overflow-hidden">
 
+      {themeOpen && <ThemeDialog onClose={() => setThemeOpen(false)} />}
+
       {pendingSetupFolder && (
         <SetupDialog onConfirm={handleSetupConfirm} onCancel={() => project.cancelSetup()} />
       )}
@@ -332,6 +336,7 @@ export default function App() {
         {liveUrl && <LiveModeToggle live={live} />}
         <ToolBtn icon="⌨" label="VS Code" onClick={() => projectFolder && api.openVSCode(projectFolder)} disabled={!ui.canRun} />
         <ToolBtn icon="💾" label="Save (Ctrl+S)" onClick={handleSave} disabled={!ui.canSave || saveBlocked} />
+        <ToolBtn icon="🎨" label="Theme" onClick={() => setThemeOpen(true)} />
         <ToolBtn icon="▦" label="Reset layout" onClick={() => resetLayout(dockRef.current)} />
       </header>
 
