@@ -28,10 +28,10 @@ export type BeginResult = 'ready' | 'needs-setup';
 const api = window.electronAPI;
 
 export const TOOLS: { mode: ToolMode; icon: IconName; label: string; key: string }[] = [
-  { mode: 'select', icon: 'ToolSelect', label: 'Select (Q)', key: 'q' },
-  { mode: 'move', icon: 'ToolMove', label: 'Move (W)', key: 'w' },
-  { mode: 'rotate', icon: 'ToolRotate', label: 'Rotate (E)', key: 'e' },
-  { mode: 'scale', icon: 'ToolScale', label: 'Scale (R)', key: 'r' },
+  { mode: 'select', icon: 'ToolSelect', label: 'Select', key: 'q' },
+  { mode: 'move', icon: 'ToolMove', label: 'Move', key: 'w' },
+  { mode: 'rotate', icon: 'ToolRotate', label: 'Rotate', key: 'e' },
+  { mode: 'scale', icon: 'ToolScale', label: 'Scale', key: 'r' },
 ];
 
 const isTyping = (t: EventTarget | null) =>

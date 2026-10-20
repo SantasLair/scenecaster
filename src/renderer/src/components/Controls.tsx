@@ -44,11 +44,11 @@ export function InspectorField({ label, value, type = 'number', min, max, step =
   );
 }
 
-export function ToolBtn({ icon, label, flipX, active, onClick, disabled, extra = '' }: {
-  icon: IconName; label: string; flipX?: boolean; active?: boolean; onClick: () => void; disabled?: boolean; extra?: string;
+export function ToolBtn({ icon, label, hint, flipX, active, onClick, disabled, extra = '' }: {
+  icon: IconName; label: string; /** Tooltip, when it should say more than the label (a shortcut key). */ hint?: string; flipX?: boolean; active?: boolean; onClick: () => void; disabled?: boolean; extra?: string;
 }) {
   return (
-    <button title={label} onClick={onClick} disabled={disabled}
+    <button title={hint ?? label} onClick={onClick} disabled={disabled}
       className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium whitespace-nowrap transition-all disabled:opacity-30 disabled:cursor-not-allowed ${
         active ? 'bg-blue-600 text-white shadow-[0_0_10px_rgba(59,130,246,0.4)]'
           : 'text-gray-300 hover:bg-gray-700 hover:text-white'

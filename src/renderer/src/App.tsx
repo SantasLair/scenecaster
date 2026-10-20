@@ -236,11 +236,7 @@ export default function App() {
         )}
         {liveUrl && live.bridgeStatus === 'connected' && live.liveEditMode && !isDraggingAsset && <LiveOverlay live={live} />}
         {ui.canvasAvailable && <div className="absolute top-3 left-3 flex items-center gap-2 pointer-events-none">
-          {liveUrl ? (
-            <span className="bg-green-900/90 text-green-300 text-xs px-2 py-1 rounded uppercase tracking-wider border border-green-700">LIVE</span>
-          ) : (
-            <span className="bg-gray-900/80 text-gray-300 text-xs px-2 py-1 rounded uppercase tracking-wider border border-gray-700">{toolMode}</span>
-          )}
+          {liveUrl && <span className="bg-green-900/90 text-green-300 text-xs px-2 py-1 rounded uppercase tracking-wider border border-green-700">LIVE</span>}
           {!liveUrl && snapEnabled && <span className="bg-blue-900/80 text-blue-300 text-xs px-2 py-1 rounded border border-blue-700">SNAP 32px</span>}
         </div>}
         {!liveUrl && ui.canvasAvailable && (
@@ -287,7 +283,7 @@ export default function App() {
 
         <div className="flex items-center gap-0.5">
           {TOOLS.map(t => (
-            <ToolBtn key={t.mode} icon={t.icon} label={t.label} active={toolMode === t.mode} disabled={!ui.canEditScene} onClick={() => setTool(t.mode)} />
+            <ToolBtn key={t.mode} icon={t.icon} label={t.label} hint={`${t.label} (${t.key.toUpperCase()})`} active={toolMode === t.mode} disabled={!ui.canEditScene} onClick={() => setTool(t.mode)} />
           ))}
         </div>
 
