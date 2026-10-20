@@ -31,7 +31,7 @@ type IpcResult = { ok: boolean; error?: string };
 type PfReadResult = IpcResult & { found?: boolean; text?: string };
 
 /** Editor-only settings, stored in scenecaster/editor.json (not part of PHASEFORM). */
-interface EditorSettings { devScript?: string; assetsDir?: string }
+interface EditorSettings { devScript?: string; assetsDir?: string; adoptStarted?: boolean; adopted?: boolean }
 
 /** What the source scan found in the game's code; null from scanSource means outside the opened project. */
 interface SourceScan {
@@ -71,6 +71,8 @@ interface ElectronAPI {
   showItem: (path: string) => Promise<void>;
   /** Reads the game's scripts (read-only) and reports scene classes, game config and asset loads. */
   scanSource: (folder: string) => Promise<SourceScan | null>;
+  /** Writes scenecaster/MIGRATE.md (the only file adoption writes); `path` is project-relative. */
+  writeMigrate: (folder: string, text: string) => Promise<IpcResult & { path?: string }>;
   readProjectScripts: (folder: string) => Promise<string[]>;
   confirmUnsaved: (message: string) => Promise<'save' | 'discard' | 'cancel'>;
   readProject: (folder: string) => Promise<PfReadResult>;

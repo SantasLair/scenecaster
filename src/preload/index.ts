@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Project scripts
   readProjectScripts: (folder: string) => ipcRenderer.invoke('project:readScripts', folder),
   scanSource: (folder: string) => ipcRenderer.invoke('project:scanSource', folder),
+  writeMigrate: (folder: string, text: string) => ipcRenderer.invoke('project:writeMigrate', folder, text),
   confirmUnsaved: (message: string) => ipcRenderer.invoke('dialog:unsaved', message),
 
   // PHASEFORM files

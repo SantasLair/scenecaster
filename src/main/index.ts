@@ -3,6 +3,7 @@ import { spawn, ChildProcess } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { PROJECT_DIR, EDITOR_FILE } from '../shared/layout';
+import { MIGRATE_FILE } from '../shared/migrate';
 import { scanAssetLoads, scanGameConfig, scanSceneClasses, type SourceFile } from '../shared/codeScan';
 import { AUDIO_EXTS, DATA_EXTS, IMAGE_EXTS as IMPORT_IMAGE_EXTS, ASSET_FOLDER_CANDIDATES, cleanFileName, cleanSubfolder, detectAssetsFolder, importKind, uniqueFileName, type ImportKind } from '../shared/assetImport';
 
@@ -663,6 +664,15 @@ app.whenReady().then(() => {
     if (typeof scripts !== 'object') return [];
     return Object.keys(scripts).filter(n =>
       SCRIPT_NAME_RE.test(n) && (n === 'dev' || n.startsWith('dev:') || /:dev(:|$)/.test(n)));
+  });
+
+  // MIGRATE.md goes in the editor's own folder, never into the game's code.
+  ipcMain.handle('project:writeMigrate', (_e, rawFolder: unknown, text: unknown) => {
+    const dir = guardFolder(rawFolder);
+    const file = dir ? guardPath(path.join(dir, PROJECT_DIR, MIGRATE_FILE)) : null;
+    if (!file || typeof text !== 'string') return BAD_PATH;
+    try { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, text); return { ok: true, path: toPosix(path.relative(dir!, file)) }; }
+    catch (e) { return { ok: false, error: (e as Error).message }; }
   });
 
   // Reads the game's script files (bounded) and reports scene classes, the game config and asset loads. Read-only.

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { joinScenes, type SceneRow, type SceneState } from '../../../shared/sceneRegistry';
 import { isSceneKey } from '../../../shared/phaseform/format';
+import { CLAUDE_POINTER, MIGRATE_FILE, migrateText } from '../../../shared/migrate';
 import { driftReport, findDrift } from '../../../shared/drift';
 import { assetFiles } from '../../../shared/phaseform/assets';
 import type { PfProject } from '../../../shared/phaseform/types';
@@ -29,7 +30,9 @@ export default function ProjectPanel({ projectFolder, project, onOpenScene, onCr
   const [scan, setScan] = useState<SourceScan | null>(null);
   const [loading, setLoading] = useState(false);
   const [missing, setMissing] = useState<Set<string>>(new Set());
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
+  const [settings, setSettings] = useState<EditorSettings>({});
+  const [adoptError, setAdoptError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!projectFolder) { setScan(null); return; }
@@ -55,8 +58,34 @@ export default function ProjectPanel({ projectFolder, project, onOpenScene, onCr
 
   const drift = useMemo(() => (project && scan ? findDrift(project, rows, scan.loads, missing) : []), [project, scan, rows, missing]);
 
-  const copyDrift = async () => {
-    try { await navigator.clipboard.writeText(driftReport(drift)); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* clipboard unavailable */ }
+  const copy = async (what: string, text: string) => {
+    try { await navigator.clipboard.writeText(text); setCopied(what); setTimeout(() => setCopied(null), 1500); } catch { /* clipboard unavailable */ }
+  };
+
+  useEffect(() => {
+    if (!projectFolder) { setSettings({}); return; }
+    void api.readEditorSettings(projectFolder).then(s => setSettings(s ?? {}));
+  }, [projectFolder]);
+
+  const saveSettings = async (patch: EditorSettings) => {
+    if (!projectFolder) return;
+    const r = await api.writeEditorSettings(projectFolder, patch);
+    if (r.ok) setSettings(s => ({ ...s, ...patch }));
+  };
+
+  // Once adoption was started and the code and the files agree, record it.
+  useEffect(() => {
+    if (settings.adoptStarted && !settings.adopted && project && scan && drift.length === 0) void saveSettings({ adopted: true });
+  }, [settings, project, scan, drift]);
+
+  /** Writes scenecaster/MIGRATE.md (nothing in the game changes). */
+  const adopt = async () => {
+    if (!projectFolder || !project || !scan) return;
+    setAdoptError(null);
+    const text = migrateText({ project, rows, loads: scan.loads, configPath: scan.config?.path ?? null });
+    const r = await api.writeMigrate(projectFolder, text);
+    if (!r.ok) { setAdoptError(r.error ?? 'Could not write the file.'); return; }
+    await saveSettings({ adoptStarted: true, adopted: false });
   };
 
   if (!projectFolder) return <p className="text-gray-600 text-xs text-center py-6">Open a project to see its scenes and settings.</p>;
@@ -126,10 +155,36 @@ export default function ProjectPanel({ projectFolder, project, onOpenScene, onCr
 
       {project && scan && (
         <section>
+          <h3 className="text-gray-400 uppercase tracking-wider text-[10px] mb-1">Adoption</h3>
+          {settings.adopted ? <p className="text-green-400">Adopted: the code and the PHASEFORM files agree.</p> : (
+            <div className="space-y-1.5">
+              <p className="text-gray-500">
+                {settings.adoptStarted
+                  ? `${MIGRATE_FILE} is written. Ask your AI to follow it; this turns to "adopted" when the Drift section below is clean.`
+                  : `Writes scenecaster/${MIGRATE_FILE} for an AI to follow. Nothing in the game is changed by the editor.`}
+              </p>
+              <button onClick={() => void adopt()} className="text-gray-200 bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded">
+                {settings.adoptStarted ? `Rewrite ${MIGRATE_FILE}` : 'Adopt this project'}
+              </button>
+              {adoptError && <p className="text-red-400">{adoptError}</p>}
+              {settings.adoptStarted && (
+                <div>
+                  <p className="text-gray-500 mb-0.5">Add this line to CLAUDE.md or AGENTS.md yourself:</p>
+                  <pre className="whitespace-pre-wrap bg-gray-950 rounded p-1.5 text-gray-300">{CLAUDE_POINTER}</pre>
+                  <button onClick={() => void copy('pointer', CLAUDE_POINTER)} className="text-gray-400 hover:text-white px-1.5 py-0.5 rounded hover:bg-gray-700">{copied === 'pointer' ? 'Copied' : 'Copy line'}</button>
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+      )}
+
+      {project && scan && (
+        <section>
           <div className="flex items-center justify-between mb-1">
             <h3 className="text-gray-400 uppercase tracking-wider text-[10px]">Drift</h3>
             {drift.length > 0 && (
-              <button onClick={() => void copyDrift()} className="text-gray-400 hover:text-white px-1.5 py-0.5 rounded hover:bg-gray-700">{copied ? 'Copied' : 'Copy for AI'}</button>
+              <button onClick={() => void copy('drift', driftReport(drift))} className="text-gray-400 hover:text-white px-1.5 py-0.5 rounded hover:bg-gray-700">{copied === 'drift' ? 'Copied' : 'Copy for AI'}</button>
             )}
           </div>
           {drift.length === 0 ? <p className="text-green-400">The code and the PHASEFORM files agree.</p> : (
