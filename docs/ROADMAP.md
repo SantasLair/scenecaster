@@ -94,8 +94,8 @@ Built on the v1 format. Anything format-specific is redone in Phase 2; the edito
 - [x] Scene model in the renderer; command-based undo history; scenes in `scenecaster/scenes/`; AI-friendly format; project root discovery; write nothing on open; engine profile; watch scene files and reload; dirty tracking, atomic write and `.bak`; validate on load; live mode disabled behind one flag; `App.tsx` split into hooks; dockview panel layout; context-aware UI (`uiState.ts`); scene list and picker (open any scene with a layout).
 - [ ] **S** Scene `key` and `overlay`: saved and validated; no overlay backdrop in the viewport yet.
 - [ ] **M** `project.json` (partial: canvas size, engine and dev script only). *Becomes `phaseform.project.json` in Phase 2.*
-- [ ] **M** Project overview panel: shows the project file; editing a setting writes it back; before adoption shows detected values (scan of `new Phaser.Game({...})`, scene classes) marked "detected, not saved".
-- [ ] **M** Scene list joined to the scene registry (partial: picker exists). States: *layout + code*, *code only*, *layout only*. "Create layout" on a code-only scene.
+- [~] **M** Project overview panel (`ProjectPanel.tsx`): shows the project file's name, entry scene and counts, and what the source scan detects (game config and canvas size, scene classes, asset loads, with computed ones counted as unreadable), marked "detected, not saved". Still to do: editing a setting and writing it back.
+- [x] **M** Scene list joined to the scene registry (`shared/sceneRegistry.ts`, shown in the Project panel): states *layout + code*, *code only*, *layout only*, a flag for classes missing from the game config, and "Create layout" on a code-only scene with a valid key.
 - [ ] **S** *Optional:* scene flow view drawn from the registry.
 - [ ] **S** Multi-select, copy/paste, arrow-key nudge, per-scene camera persistence, recent projects.
 - [ ] **S** Folder-name constant is in `src/shared/layout.ts`; the generated docs (`MIGRATE.md` and others) that read it are not started.

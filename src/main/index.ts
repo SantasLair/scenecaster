@@ -3,6 +3,7 @@ import { spawn, ChildProcess } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { PROJECT_DIR, EDITOR_FILE } from '../shared/layout';
+import { scanAssetLoads, scanGameConfig, scanSceneClasses, type SourceFile } from '../shared/codeScan';
 import { AUDIO_EXTS, DATA_EXTS, IMAGE_EXTS as IMPORT_IMAGE_EXTS, ASSET_FOLDER_CANDIDATES, cleanFileName, cleanSubfolder, detectAssetsFolder, importKind, uniqueFileName, type ImportKind } from '../shared/assetImport';
 
 const IS_WIN = process.platform === 'win32';
@@ -662,6 +663,37 @@ app.whenReady().then(() => {
     if (typeof scripts !== 'object') return [];
     return Object.keys(scripts).filter(n =>
       SCRIPT_NAME_RE.test(n) && (n === 'dev' || n.startsWith('dev:') || /:dev(:|$)/.test(n)));
+  });
+
+  // Reads the game's script files (bounded) and reports scene classes, the game config and asset loads. Read-only.
+  const SOURCE_EXTS = new Set(['.js', '.jsx', '.mjs', '.ts', '.tsx']);
+  const MAX_SOURCE_FILES = 1500;
+  const MAX_SOURCE_BYTES = 512 * 1024;
+  ipcMain.handle('project:scanSource', (_e, rawFolder: unknown) => {
+    const root = guardFolder(rawFolder);
+    if (!root) return null;
+    const files: SourceFile[] = [];
+    let truncated = false;
+    const walk = (dir: string, depth: number) => {
+      if (depth > 8 || truncated) return;
+      let entries: fs.Dirent[];
+      try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+      for (const entry of entries) {
+        if (entry.isSymbolicLink()) continue;
+        const isDir = entry.isDirectory();
+        if (hidden(entry.name, isDir)) continue;
+        const full = path.join(dir, entry.name);
+        if (isDir) { walk(full, depth + 1); continue; }
+        if (!SOURCE_EXTS.has(path.extname(entry.name).toLowerCase()) || entry.name.endsWith('.d.ts')) continue;
+        if (files.length >= MAX_SOURCE_FILES) { truncated = true; return; }
+        try {
+          if (fs.statSync(full).size > MAX_SOURCE_BYTES) continue;
+          files.push({ path: toPosix(path.relative(root, full)), text: fs.readFileSync(full, 'utf-8') });
+        } catch { /* unreadable file: skip */ }
+      }
+    };
+    walk(root, 0);
+    return { scenes: scanSceneClasses(files), loads: scanAssetLoads(files), config: scanGameConfig(files), fileCount: files.length, truncated };
   });
 
   createWindow();

@@ -13,6 +13,7 @@ import AnimationsPanel from './components/AnimationsPanel';
 import ManifestPanel from './components/ManifestPanel';
 import Inspector from './components/Inspector';
 import ProblemsPanel from './components/ProblemsPanel';
+import ProjectPanel from './components/ProjectPanel';
 import { ToolBtn, SetupDialog, ScenePicker } from './components/Controls';
 import Dock, { DockContext, resetLayout, type DockCtx } from './Dock';
 import type { DockviewApi } from 'dockview-react';
@@ -141,6 +142,7 @@ export default function App() {
   const canRedo = useHistory(s => s.future.length > 0);
 
   const dockCtx: DockCtx = {
+    project: <ProjectPanel projectFolder={projectFolder} project={scene.project} onOpenScene={openScene} onCreateLayout={createScene} />,
     objects: (
       <div className={`relative h-full ${isDraggingAsset ? 'ring-1 ring-inset ring-blue-600/40' : ''}`}
         onDragOver={isDraggingAsset ? e => e.preventDefault() : undefined}

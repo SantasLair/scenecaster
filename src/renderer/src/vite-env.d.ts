@@ -33,6 +33,16 @@ type PfReadResult = IpcResult & { found?: boolean; text?: string };
 /** Editor-only settings, stored in scenecaster/editor.json (not part of PHASEFORM). */
 interface EditorSettings { devScript?: string; assetsDir?: string }
 
+/** What the source scan found in the game's code; null from scanSource means outside the opened project. */
+interface SourceScan {
+  scenes: import('../../shared/codeScan').SceneClass[];
+  loads: import('../../shared/codeScan').AssetLoad[];
+  config: import('../../shared/codeScan').GameConfig | null;
+  fileCount: number;
+  /** True when the file limit was hit, so the report may be incomplete. */
+  truncated: boolean;
+}
+
 interface ElectronAPI {
   openFolder: () => Promise<string | null>;
   readAssets: (folder: string) => Promise<AssetEntry[]>;
@@ -59,6 +69,8 @@ interface ElectronAPI {
   listDir: (dir: string) => Promise<FsEntry[] | null>;
   findFiles: (dir: string, query: string) => Promise<FsEntry[]>;
   showItem: (path: string) => Promise<void>;
+  /** Reads the game's scripts (read-only) and reports scene classes, game config and asset loads. */
+  scanSource: (folder: string) => Promise<SourceScan | null>;
   readProjectScripts: (folder: string) => Promise<string[]>;
   confirmUnsaved: (message: string) => Promise<'save' | 'discard' | 'cancel'>;
   readProject: (folder: string) => Promise<PfReadResult>;

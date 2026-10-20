@@ -29,6 +29,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Project scripts
   readProjectScripts: (folder: string) => ipcRenderer.invoke('project:readScripts', folder),
+  scanSource: (folder: string) => ipcRenderer.invoke('project:scanSource', folder),
   confirmUnsaved: (message: string) => ipcRenderer.invoke('dialog:unsaved', message),
 
   // PHASEFORM files
