@@ -7,6 +7,7 @@ import type { EditorToViewport, LiveField, ViewAsset } from '../../shared/protoc
 import { LIVE_FIELDS } from '../../shared/protocol';
 import type { PfAsset, PfObject, PfProject, PfScene, Problem } from '../../shared/phaseform/types';
 import { newScene } from '../../shared/phaseform/format';
+import { addAnimation as addAnim, removeAnimationKey, renameAnimationKey, updateAnimationFields, animationUses, type PfAnimation } from '../../shared/phaseform/animations';
 import { assetUses, removeAssetKey, renameAssetKey, updateAssetFields } from '../../shared/phaseform/assets';
 import { insertObject, moveObject, removeObject, updateObject, walk, findById, type Removed } from '../../shared/phaseform/tree';
 import { checkSceneAgainstProject, validateScene } from '../../shared/phaseform/validate';
@@ -294,6 +295,38 @@ export function removeAsset(key: string): boolean {
 
 /** Where the open scene and the project use an asset key. */
 export const usesOfAsset = (key: string): string[] => assetUses(get().scene, get().project, key);
+
+// ---- Animations (the project's `animations` list) ----------------------------------------------------------------
+
+function setAnimations(project: PfProject | null) {
+  if (!project) return false;
+  set(s => ({ project, projectRev: s.projectRev + 1 }));
+  schedulePush(0);
+  return true;
+}
+
+export function addAnimation(anim: PfAnimation): boolean { return setAnimations(get().project && addAnim(get().project!, anim)); }
+
+/** Edits fields of one animation (`undefined` removes a field); the key changes through renameAnimation. */
+export function updateAnimation(key: string, patch: Record<string, unknown>): boolean {
+  return setAnimations(get().project && updateAnimationFields(get().project!, key, patch));
+}
+
+export function removeAnimation(key: string): boolean { return setAnimations(get().project && removeAnimationKey(get().project!, key)); }
+
+/** Renames an animation and the objects of the open scene that play it. False if the key is missing, empty or taken. */
+export function renameAnimation(oldKey: string, newKey: string): boolean {
+  const { scene, project } = get();
+  const next = project && renameAnimationKey(scene, project, oldKey, newKey);
+  if (!next) return false;
+  set(s => ({ scene: next.scene, project: next.project, rev: next.scene === scene ? s.rev : s.rev + 1, projectRev: s.projectRev + 1 }));
+  revalidateSoon();
+  schedulePush(0);
+  return true;
+}
+
+/** Ids of the objects in the open scene that play an animation. */
+export const usesOfAnimation = (key: string): string[] => animationUses(get().scene, key);
 
 /** Registers a new scene file in the project. */
 export function addSceneEntry(key: string, path: string) {

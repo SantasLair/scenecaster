@@ -7,6 +7,7 @@ import {
   type ToolMode, type EditorToViewport, type BridgeToEditor, type AssetPayload,
 } from '../../../shared/protocol';
 import type { PfObject, PfProject, PfScene, Problem } from '../../../shared/phaseform/types';
+import type { PfAnimation } from '../../../shared/phaseform/animations';
 import { PROJECT_FILE, formatJson, isSceneKey, newProject, scenePathFor } from '../../../shared/phaseform/format';
 import { allIds, cloneWithNewIds, findById, uniqueId } from '../../../shared/phaseform/tree';
 import { checkSceneAgainstProject, validateProject, validateScene } from '../../../shared/phaseform/validate';
@@ -125,6 +126,15 @@ export function useScene({ iframeRef, send, projectFolder, appendLog, showConsol
   };
   const renameAsset = (oldKey: string, newKey: string) => step(() => model.renameAsset(oldKey, newKey));
   const removeAsset = (key: string) => step(() => model.removeAsset(key));
+
+  const addAnimation = (anim: PfAnimation) => step(() => model.addAnimation(anim));
+  const updateAnimationField = (key: string, patch: Record<string, unknown>, commit = false) => {
+    beginGesture();
+    model.updateAnimation(key, patch);
+    if (commit) commitEdit();
+  };
+  const renameAnimation = (oldKey: string, newKey: string) => step(() => model.renameAnimation(oldKey, newKey));
+  const removeAnimation = (key: string) => step(() => model.removeAnimation(key));
 
   const nextId = (base: string) => uniqueId(base, allIds(model.useSceneModel.getState().scene));
 
@@ -468,6 +478,6 @@ export function useScene({ iframeRef, send, projectFolder, appendLog, showConsol
     scene, project, scenes, sceneKey, canvasSize, selectedObject, lockedIds, toolMode, saveStatus, saveBlocked: blocked, sceneStatus, problems,
     openScene, openSceneFile, createScene, createProject, beginProject, endProject,
     setTool, toggleSnap, undo, redo, updateField, commitEdit, selectObject,
-    addObject, dropAsset, updateAssetField, renameAsset, removeAsset, deleteObject, duplicateObject, renameObject, toggleVisible, toggleLocked, moveObject, handleSave,
+    addObject, dropAsset, updateAssetField, renameAsset, removeAsset, addAnimation, updateAnimationField, renameAnimation, removeAnimation, deleteObject, duplicateObject, renameObject, toggleVisible, toggleLocked, moveObject, handleSave,
   };
 }

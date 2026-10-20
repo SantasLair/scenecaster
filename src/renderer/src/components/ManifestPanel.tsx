@@ -52,7 +52,9 @@ function PathField({ value, required, onApply }: { value: string; required?: boo
   );
 }
 
-function KeyField({ keyName, onRename }: { keyName: string; onRename(k: string): boolean }) {
+export function KeyField({ keyName, onRename, hint = 'Renaming also updates the open scene, animations and preload lists.', what = 'asset' }: {
+  keyName: string; onRename(k: string): boolean; hint?: string; what?: string;
+}) {
   const [text, setText] = useState(keyName);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => { setText(keyName); setError(null); }, [keyName]);
@@ -60,12 +62,12 @@ function KeyField({ keyName, onRename }: { keyName: string; onRename(k: string):
     const t = text.trim();
     if (t === keyName) { setText(keyName); setError(null); return; }
     if (onRename(t)) setError(null);
-    else { setError(t ? `"${t}" is already used by another asset.` : 'The key cannot be empty.'); setText(keyName); }
+    else { setError(t ? `"${t}" is already used by another ${what}.` : 'The key cannot be empty.'); setText(keyName); }
   };
   return (
     <div>
-      <Row label="Key" hint="Renaming also updates the open scene, animations and preload lists.">
-        <input type="text" value={text} spellCheck={false} onChange={e => setText(e.target.value)} onBlur={apply}
+      <Row label="Key" hint={hint}>
+        <input type="text" value={text} spellCheck={false} onChange={e => { setText(e.target.value); setError(null); }} onBlur={apply}
           onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
           className={`flex-1 min-w-0 ${inputCls} ${error ? '!border-red-600' : ''}`} />
       </Row>

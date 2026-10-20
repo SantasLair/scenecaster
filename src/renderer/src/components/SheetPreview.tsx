@@ -1,7 +1,6 @@
-import { useEffect, useState } from 'react';
 import type { PfAsset } from '../../../shared/phaseform/types';
 import { sheetFrames, sheetSpec } from '../../../shared/phaseform/sheet';
-import { readProjectImage } from '../sceneModel';
+import { useProjectImage } from '../hooks/useProjectImage';
 
 interface Props {
   asset: PfAsset;
@@ -16,31 +15,21 @@ interface Props {
 /** An asset's image with its frame grid drawn over it, so the frame size, margin and spacing can be checked by eye. */
 export default function SheetPreview({ asset, selected, onPick, maxSize = 240 }: Props) {
   const url = typeof asset.url === 'string' ? asset.url : null;
-  const [src, setSrc] = useState<string | null>(null);
-  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
-  const [missing, setMissing] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    setSrc(null); setSize(null); setMissing(false);
-    if (!url) return;
-    void readProjectImage(url).then(data => { if (cancelled) return; if (data) setSrc(data); else setMissing(true); });
-    return () => { cancelled = true; };
-  }, [url]);
+  const { state, src, size } = useProjectImage(url);
 
   if (!url) return null;
-  if (missing) return <div className="text-[10px] text-red-400">Image file not found: {url}</div>;
-  if (!src) return <div className="text-[10px] text-gray-600">Loading preview…</div>;
+  if (state === 'missing') return <div className="text-[10px] text-red-400">Image file not found: {url}</div>;
+  if (state !== 'ready' || !src || !size) return <div className="text-[10px] text-gray-600">Loading preview…</div>;
 
   const spec = asset.type === 'spritesheet' ? sheetSpec(asset) : null;
-  const frames = size && spec ? sheetFrames(size.w, size.h, spec) : [];
+  const frames = spec ? sheetFrames(size.w, size.h, spec) : [];
   // Fit the image into maxSize; small sheets are enlarged up to 4x so a 16px frame can be clicked.
-  const scale = size ? Math.min(maxSize / size.w, maxSize / size.h, 4) : 1;
+  const scale = Math.min(maxSize / size.w, maxSize / size.h, 4);
 
   return (
     <div>
-      <div className="relative inline-block border border-gray-700 bg-gray-950 leading-none" style={size ? { width: size.w * scale, height: size.h * scale } : undefined}>
-        <img src={src} alt="" draggable={false} onLoad={e => setSize({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
+      <div className="relative inline-block border border-gray-700 bg-gray-950 leading-none" style={{ width: size.w * scale, height: size.h * scale }}>
+        <img src={src} alt="" draggable={false}
           className="block w-full h-full" style={{ imageRendering: 'pixelated' }} />
         {frames.map(f => (
           <div key={f.index} title={`Frame ${f.index}`} onClick={onPick ? () => onPick(f.index) : undefined}
@@ -50,11 +39,9 @@ export default function SheetPreview({ asset, selected, onPick, maxSize = 240 }:
           </div>
         ))}
       </div>
-      {size && (
-        <div className="text-[10px] text-gray-500 mt-1">
-          {size.w}×{size.h}px{spec ? (frames.length ? `, ${frames.length} frames` : ', the frame size does not fit the image') : ''}
-        </div>
-      )}
+      <div className="text-[10px] text-gray-500 mt-1">
+        {size.w}×{size.h}px{spec ? (frames.length ? `, ${frames.length} frames` : ', the frame size does not fit the image') : ''}
+      </div>
     </div>
   );
 }

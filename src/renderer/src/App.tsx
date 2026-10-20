@@ -1,4 +1,5 @@
 import { useShallow } from 'zustand/react/shallow';
+import { animationList } from '../../shared/phaseform/animations';
 import { findById } from '../../shared/phaseform/tree';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type React from 'react';
@@ -8,6 +9,7 @@ import { useHistory } from './history';
 import ObjectsPanel from './components/ObjectsPanel';
 import AssetBrowser from './components/AssetBrowser';
 import FileSystemPanel from './components/FileSystemPanel';
+import AnimationsPanel from './components/AnimationsPanel';
 import ManifestPanel from './components/ManifestPanel';
 import Inspector from './components/Inspector';
 import ProblemsPanel from './components/ProblemsPanel';
@@ -66,7 +68,7 @@ export default function App() {
   });
   const {
     scenes, sceneKey, openScene, openSceneFile, moveObject, canvasSize, selectedObject, lockedIds, toolMode, saveStatus, saveBlocked, sceneStatus, createScene, problems,
-    addObject, dropAsset, updateAssetField, renameAsset, removeAsset, setTool, toggleSnap, undo, redo, updateField, commitEdit, selectObject,
+    addObject, dropAsset, updateAssetField, renameAsset, removeAsset, addAnimation, updateAnimationField, renameAnimation, removeAnimation, setTool, toggleSnap, undo, redo, updateField, commitEdit, selectObject,
     deleteObject, duplicateObject, renameObject, toggleVisible, toggleLocked, handleSave,
   } = scene;
   const textureKeys = (scene.project?.assets ?? []).filter(a => ['image', 'spritesheet', 'atlas'].includes(a.type)).map(a => a.key);
@@ -171,10 +173,14 @@ export default function App() {
     manifest: (
       <ManifestPanel project={scene.project} onUpdate={updateAssetField} onCommit={commitEdit} onRename={renameAsset} onRemove={removeAsset} />
     ),
+    animations: (
+      <AnimationsPanel project={scene.project} onAdd={addAnimation} onUpdate={updateAnimationField} onCommit={commitEdit}
+        onRename={renameAnimation} onRemove={removeAnimation} />
+    ),
     inspector: liveUrl ? <LiveInspector live={live} /> : !ui.canvasAvailable ? (
       <Empty text={ui.hasProject ? 'Select a scene to inspect its objects.' : 'Open a project to inspect objects.'} />
     ) : selectedObject ? (
-      <Inspector key={selectedObject.id} object={selectedObject} textureKeys={textureKeys} fontKeys={fontKeys} assets={scene.project?.assets ?? []}
+      <Inspector key={selectedObject.id} object={selectedObject} textureKeys={textureKeys} fontKeys={fontKeys} assets={scene.project?.assets ?? []} animationKeys={animationList(scene.project).map(a => a.key)}
         isTopLevel={findById(scene.scene, selectedObject.id)?.parent === null}
         onChange={updateField} onCommit={commitEdit} onDelete={() => deleteObject(selectedObject.id)} />
     ) : (

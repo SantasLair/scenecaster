@@ -14,6 +14,8 @@ interface Props {
   fontKeys: string[];
   /** The project's asset entries: a spritesheet gets a frame picker under its object's Frame field. */
   assets: PfAsset[];
+  /** Keys of the project's animations, for a sprite's Animation picker. */
+  animationKeys: string[];
   /** Depth only applies to top-level objects. */
   isTopLevel: boolean;
   /** A value of undefined removes the field. `commit` ends the undo step at once (toggles, selects). */
@@ -277,7 +279,7 @@ function Field({ def, obj, textureKeys, fontKeys, assets, onChange, onCommit }: 
 
 // ---------------------------------------------------------------- inspector
 
-export default function Inspector({ object, textureKeys, fontKeys, assets, isTopLevel, onChange, onCommit, onDelete }: Props) {
+export default function Inspector({ object, textureKeys, fontKeys, assets, animationKeys, isTopLevel, onChange, onCommit, onDelete }: Props) {
   const sections = sectionsFor(object.type, isTopLevel);
   const advanced = advancedKeys(object, isTopLevel);
 
@@ -307,6 +309,25 @@ export default function Inspector({ object, textureKeys, fontKeys, assets, isTop
           ))}
         </section>
       ))}
+
+      {object.type === 'sprite' && (() => {
+        const anim = object.animation && typeof object.animation === 'object' ? object.animation as { key?: unknown } : undefined;
+        const cur = typeof anim?.key === 'string' ? anim.key : '';
+        const missing = cur !== '' && !animationKeys.includes(cur);
+        return (
+          <section>
+            <div className="section-label mb-2">Animation</div>
+            <Row label="Plays" hint="Define animations in the Animations panel. Play options stay in the raw JSON below.">
+              <select value={cur} onChange={e => onChange({ animation: e.target.value === '' ? undefined : { ...anim, key: e.target.value } }, true)}
+                className={`flex-1 min-w-0 ${inputCls} ${missing ? '!border-red-600 text-red-300' : ''}`}>
+                <option value="">(none)</option>
+                {missing && <option value={cur}>{cur} (missing)</option>}
+                {animationKeys.map(k => <option key={k} value={k}>{k}</option>)}
+              </select>
+            </Row>
+          </section>
+        );
+      })()}
 
       {advanced.length > 0 && (
         <section>

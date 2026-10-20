@@ -9,6 +9,7 @@ export interface DockCtx {
   filesystem: React.ReactNode;
   assets: React.ReactNode;
   manifest: React.ReactNode;
+  animations: React.ReactNode;
   inspector: React.ReactNode;
   console: React.ReactNode;
   problems: React.ReactNode;
@@ -37,6 +38,7 @@ const components = {
   filesystem: slot('filesystem'),
   assets: slot('assets'),
   manifest: slot('manifest'),
+  animations: slot('animations'),
   inspector: slot('inspector'),
   console: slot('console'),
   problems: slot('problems'),
@@ -53,8 +55,9 @@ export function buildDefaultLayout(api: DockviewApi) {
   api.addPanel({ id: 'inspector', component: 'inspector', title: 'Inspector',
     position: { referencePanel: vp, direction: 'right' }, initialWidth: 270 });
   const assets = api.addPanel({ id: 'assets', component: 'assets', title: 'Assets',
-    position: { referencePanel: vp, direction: 'below' }, initialHeight: 200 });
+    position: { referencePanel: vp, direction: 'below' }, initialHeight: 300 });
   api.addPanel({ id: 'manifest', component: 'manifest', title: 'Project Assets', position: { referencePanel: assets } });
+  api.addPanel({ id: 'animations', component: 'animations', title: 'Animations', position: { referencePanel: assets } });
   api.addPanel({ id: 'console', component: 'console', title: 'Console', position: { referencePanel: assets } });
   api.addPanel({ id: 'problems', component: 'problems', title: 'Problems', position: { referencePanel: assets } });
   assets.api.setActive();
