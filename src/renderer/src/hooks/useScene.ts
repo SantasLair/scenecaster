@@ -12,7 +12,7 @@ import { PROJECT_FILE, formatJson, isSceneKey, newProject, scenePathFor } from '
 import { allIds, cloneWithNewIds, findById, uniqueId } from '../../../shared/phaseform/tree';
 import { checkSceneAgainstProject, validateProject, validateScene } from '../../../shared/phaseform/validate';
 import { planManifestEntries, suggestKey } from '../../../shared/assetImport';
-import { applyRenamesToScene, assetUses } from '../../../shared/phaseform/assets';
+import { animationAssetKeys, applyRenamesToScene, assetFiles, assetUses, buildAssetReport, sceneAssetKeys, type AssetReport } from '../../../shared/phaseform/assets';
 import type { PfAsset } from '../../../shared/phaseform/types';
 import { ADD_LABELS, createImage, createObject, type AddKind } from '../newObjects';
 import * as history from '../history';
@@ -133,21 +133,36 @@ export function useScene({ iframeRef, send, projectFolder, appendLog, showConsol
   const renameAsset = (oldKey: string, newKey: string) => step(() => model.renameAsset(oldKey, newKey));
   const removeAsset = (key: string) => step(() => model.removeAsset(key));
 
-  /** Where an asset is used: the open scene and the project (animations, preload lists), plus every other scene file on disk. */
-  const findAssetUses = async (key: string): Promise<string[]> => {
+  /** The project's other scene files as they will be after the next save (renames pending since the last save are applied). */
+  const readOtherScenes = async (): Promise<{ key: string; doc: PfScene }[]> => {
     const s = useSceneModel.getState();
-    const uses = model.usesOfAsset(key);
-    if (!projectFolder || !s.project) return uses;
+    const out: { key: string; doc: PfScene }[] = [];
+    if (!projectFolder || !s.project) return out;
     for (const entry of s.project.scenes) {
       if (entry.path === s.scenePath) continue;
       const r = await api.readScene(projectFolder, entry.path);
       const parsed = r.ok && r.found ? parseJson<PfScene>(r.text ?? '') : null;
-      if (!parsed?.ok || !Array.isArray(parsed.value?.objects)) continue;
-      // Files on disk still hold keys renamed since the last save.
-      const doc = applyRenamesToScene(parsed.value, s.pendingRenames);
-      for (const u of assetUses(doc, null, key)) uses.push(`${u} in scene "${entry.key}"`);
+      if (parsed?.ok && Array.isArray(parsed.value?.objects)) out.push({ key: entry.key, doc: applyRenamesToScene(parsed.value, s.pendingRenames) });
     }
+    return out;
+  };
+
+  /** Where an asset is used: the open scene and the project (animations, preload lists), plus every other scene file on disk. */
+  const findAssetUses = async (key: string): Promise<string[]> => {
+    const uses = model.usesOfAsset(key);
+    for (const { key: sceneKey, doc } of await readOtherScenes()) for (const u of assetUses(doc, null, key)) uses.push(`${u} in scene "${sceneKey}"`);
     return uses;
+  };
+
+  /** Manifest entries nothing in the scenes uses, and entries whose files are not on disk. */
+  const checkAssets = async (): Promise<AssetReport | null> => {
+    const s = useSceneModel.getState();
+    if (!projectFolder || !s.project) return null;
+    const used = new Set([...sceneAssetKeys(s.scene), ...animationAssetKeys(s.project)]);
+    for (const { doc } of await readOtherScenes()) for (const k of sceneAssetKeys(doc)) used.add(k);
+    const files = [...new Set(s.project.assets.flatMap(assetFiles))];
+    const missing = new Set(await api.missingAssetFiles(projectFolder, files));
+    return buildAssetReport(s.project, used, missing);
   };
 
   const addAnimation = (anim: PfAnimation) => step(() => model.addAnimation(anim));
@@ -557,6 +572,6 @@ export function useScene({ iframeRef, send, projectFolder, appendLog, showConsol
     scene, project, scenes, sceneKey, canvasSize, selectedObject, lockedIds, toolMode, saveStatus, saveBlocked: blocked, sceneStatus, problems,
     openScene, openSceneFile, createScene, createProject, beginProject, endProject,
     setTool, toggleSnap, undo, redo, updateField, commitEdit, selectObject,
-    addObject, dropAsset, importAssets, updateAssetField, renameAsset, removeAsset, findAssetUses, addAnimation, updateAnimationField, renameAnimation, removeAnimation, deleteObject, duplicateObject, renameObject, toggleVisible, toggleLocked, moveObject, handleSave,
+    addObject, dropAsset, importAssets, updateAssetField, renameAsset, removeAsset, findAssetUses, checkAssets, addAnimation, updateAnimationField, renameAnimation, removeAnimation, deleteObject, duplicateObject, renameObject, toggleVisible, toggleLocked, moveObject, handleSave,
   };
 }

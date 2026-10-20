@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { PfAsset, PfProject } from '../../../shared/phaseform/types';
+import type { AssetReport } from '../../../shared/phaseform/assets';
 import SheetPreview from './SheetPreview';
 import { JsonBox, NumberInput, Row, inputCls } from './Inspector';
 
@@ -13,6 +14,30 @@ interface Props {
   onRemove(key: string): void;
   /** Everywhere the key is used, across all scene files. */
   onFindUses(key: string): Promise<string[]>;
+  /** Unused entries and missing files; null if there is no project. */
+  onCheck(): Promise<AssetReport | null>;
+}
+
+/** The result of "Check assets": clicking a key selects that entry. */
+function ReportView({ report, onSelect }: { report: AssetReport; onSelect(key: string): void }) {
+  if (!report.unused.length && !report.missing.length) return <div className="px-2 py-1 text-[11px] text-green-400">All files exist and every entry is used.</div>;
+  const link = (key: string) => <button key={key} onClick={() => onSelect(key)} className="underline text-gray-200 hover:text-white mr-2">{key}</button>;
+  return (
+    <div className="px-2 py-1 text-[11px] space-y-1">
+      {report.missing.length > 0 && (
+        <div>
+          <div className="text-red-400">File not found:</div>
+          {report.missing.map(m => <div key={m.key} className="text-gray-400">{link(m.key)}<span className="font-mono">{m.files.join(', ')}</span></div>)}
+        </div>
+      )}
+      {report.unused.length > 0 && (
+        <div>
+          <div className="text-yellow-400" title="No scene object or animation uses these. The game's own code may.">Not used by any scene or animation:</div>
+          <div>{report.unused.map(link)}</div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 interface FieldDef { name: string; label: string; kind: 'path' | 'int'; min?: number; def?: number; required?: boolean; hint?: string }
@@ -77,7 +102,7 @@ export function KeyField({ keyName, onRename, hint = 'Renaming also updates the 
   );
 }
 
-function AssetEditor({ asset, onUpdate, onCommit, onRename, onRemove, onFindUses }: Omit<Props, 'project'> & { asset: PfAsset }) {
+function AssetEditor({ asset, onUpdate, onCommit, onRename, onRemove, onFindUses }: Omit<Props, 'project' | 'onCheck'> & { asset: PfAsset }) {
   const fields = FIELDS[asset.type];
   const patch = (p: Record<string, unknown>, commit = false) => onUpdate(asset.key, p, commit);
 
@@ -143,8 +168,11 @@ function AssetEditor({ asset, onUpdate, onCommit, onRename, onRemove, onFindUses
   );
 }
 
-export default function ManifestPanel({ project, onUpdate, onCommit, onRename, onRemove, onFindUses }: Props) {
+export default function ManifestPanel({ project, onUpdate, onCommit, onRename, onRemove, onFindUses, onCheck }: Props) {
   const [selected, setSelected] = useState<string | null>(null);
+  const [report, setReport] = useState<AssetReport | null>(null);
+  const [checking, setChecking] = useState(false);
+  const runCheck = async () => { setChecking(true); try { setReport(await onCheck()); } finally { setChecking(false); } };
   const assets = project?.assets ?? [];
   const asset = assets.find(a => a.key === selected) ?? null;
 
@@ -166,7 +194,15 @@ export default function ManifestPanel({ project, onUpdate, onCommit, onRename, o
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <div className="max-h-[45%] min-h-[3.5rem] overflow-y-auto border-b border-gray-700 py-1 flex-shrink-0">
+      <div className="flex items-center gap-2 px-2 py-1 border-b border-gray-700 flex-shrink-0">
+        <span className="text-[10px] text-gray-500 flex-1">{assets.length} asset{assets.length === 1 ? '' : 's'}</span>
+        <button onClick={runCheck} disabled={checking} className="px-2 py-0.5 rounded text-[11px] border border-gray-600 text-gray-300 hover:bg-gray-700 disabled:opacity-50">
+          {checking ? 'Checking...' : 'Check assets'}
+        </button>
+      </div>
+      <div className="max-h-[55%] min-h-[3.5rem] overflow-y-auto border-b border-gray-700 flex-shrink-0">
+      {report && <div className="border-b border-gray-700"><ReportView report={report} onSelect={setSelected} /></div>}
+      <div className="py-1">
         {assets.map(a => (
           <button key={a.key} onClick={() => setSelected(a.key)}
             className={`w-full flex items-center gap-2 px-2 py-1 text-xs text-left ${a.key === selected ? 'bg-blue-700 text-white' : 'text-gray-300 hover:bg-gray-700'}`}>
@@ -174,6 +210,7 @@ export default function ManifestPanel({ project, onUpdate, onCommit, onRename, o
             <span className="text-[10px] text-gray-500 flex-shrink-0">{a.type}</span>
           </button>
         ))}
+      </div>
       </div>
       <div className="flex-1 overflow-y-auto min-h-0">
         {asset

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { addRename, applyRenamesToScene } from './assets';
-import type { PfScene } from './types';
+import { addRename, animationAssetKeys, applyRenamesToScene, assetFiles, buildAssetReport, sceneAssetKeys } from './assets';
+import type { PfProject, PfScene } from './types';
 
 const scene = (objects: PfScene['objects']): PfScene => ({ format: 'phaseform', version: '0.1', key: 'S', size: { width: 10, height: 10 }, objects } as PfScene);
 
@@ -32,5 +32,36 @@ describe('asset renames across scene files', () => {
     expect(addRename([{ from: 'a', to: 'b' }], 'b', 'c')).toEqual([{ from: 'a', to: 'c' }]);
     expect(addRename([{ from: 'a', to: 'b' }], 'b', 'a')).toEqual([]);
     expect(addRename([{ from: 'a', to: 'b' }], 'x', 'y')).toEqual([{ from: 'a', to: 'b' }, { from: 'x', to: 'y' }]);
+  });
+});
+
+describe('asset report', () => {
+  const project = {
+    format: 'phaseform-project', version: '0.1.0', name: 'p', entry: 'S', scenes: [{ key: 'S', path: 's', assets: ['preloaded'] }],
+    assets: [
+      { key: 'hero', type: 'image', url: 'a/hero.png' },
+      { key: 'atlas', type: 'atlas', url: 'a/at.png', atlasUrl: 'a/at.json' },
+      { key: 'boom', type: 'audio', urls: ['a/boom.mp3', 'a/boom.ogg'] },
+      { key: 'preloaded', type: 'image', url: 'a/p.png' },
+      { key: 'walkSheet', type: 'spritesheet', url: 'a/w.png' },
+    ],
+    animations: [{ key: 'walk', frames: [{ key: 'walkSheet' }] }],
+  } as unknown as PfProject;
+
+  it('collects keys from nested objects, fonts and animation frames, not from preload lists', () => {
+    const s = scene([{ id: 'c', type: 'container', children: [{ id: 'i', type: 'image', key: 'hero' }] }, { id: 't', type: 'bitmapText', font: 'atlas' }] as PfScene['objects']);
+    expect([...sceneAssetKeys(s)].sort()).toEqual(['atlas', 'hero']);
+    expect([...animationAssetKeys(project)]).toEqual(['walkSheet']);
+  });
+
+  it('lists every file of an entry', () => {
+    expect(assetFiles(project.assets[1])).toEqual(['a/at.png', 'a/at.json']);
+    expect(assetFiles(project.assets[2])).toEqual(['a/boom.mp3', 'a/boom.ogg']);
+  });
+
+  it('reports unused entries and the missing files per entry', () => {
+    const r = buildAssetReport(project, new Set(['hero', 'atlas', 'walkSheet']), new Set(['a/at.json', 'a/boom.ogg']));
+    expect(r.unused).toEqual(['boom', 'preloaded']);
+    expect(r.missing).toEqual([{ key: 'atlas', files: ['a/at.json'] }, { key: 'boom', files: ['a/boom.ogg'] }]);
   });
 });

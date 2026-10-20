@@ -375,6 +375,21 @@ app.whenReady().then(() => {
     return folder ? assetsInfo(folder) : null;
   });
 
+  /** Which of these project-relative files are not on disk (a path that leaves the project counts as missing). */
+  ipcMain.handle('assets:missing', (_e, rawFolder: unknown, rawPaths: unknown): string[] => {
+    const folder = guardFolder(rawFolder);
+    if (!folder || !Array.isArray(rawPaths)) return [];
+    const missing: string[] = [];
+    for (const p of rawPaths.slice(0, 5000)) {
+      if (typeof p !== 'string') continue;
+      const parts = p.split('/');
+      const safe = !p.includes('\0') && !p.includes('\\') && !p.startsWith('/') && !/^[A-Za-z]:/.test(p) && !parts.some(s => s === '' || s === '.' || s === '..');
+      const target = safe ? guardPath(path.join(folder, ...parts)) : null;
+      if (!target || !fs.existsSync(target)) missing.push(p);
+    }
+    return missing;
+  });
+
   ipcMain.handle('fs:readAssets', (_e, rawFolder: unknown) => {
     const folder = guardFolder(rawFolder);
     if (!folder) return [];

@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   findFiles: (dir: string, query: string) => ipcRenderer.invoke('fs:findFiles', dir, query),
   showItem: (path: string) => ipcRenderer.invoke('shell:showItem', path),
   fileToDataUrl: (path: string) => ipcRenderer.invoke('fs:fileToDataUrl', path),
+  missingAssetFiles: (folder: string, relPaths: string[]) => ipcRenderer.invoke('assets:missing', folder, relPaths),
   assetsInfo: (folder: string) => ipcRenderer.invoke('assets:info', folder),
   pickAssets: () => ipcRenderer.invoke('assets:pick'),
   importAssets: (folder: string, destRel: string, sources: string[]) => ipcRenderer.invoke('assets:import', folder, destRel, sources),

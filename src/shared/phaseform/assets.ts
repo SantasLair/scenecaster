@@ -96,6 +96,44 @@ export function renameAssetKey(scene: PfScene, project: PfProject, oldKey: strin
   return { scene: nextScene, project: { ...refs, assets: refs.assets.map(a => (a.key === oldKey ? { ...a, key: newKey } : a)) } };
 }
 
+/** Every asset key a scene's objects refer to (images, fonts, filter textures), nested objects included. */
+export function sceneAssetKeys(scene: PfScene): Set<string> {
+  const keys = new Set<string>();
+  for (const o of scene.objects) mapObjectRefs(o, k => { keys.add(k); return k; });
+  return keys;
+}
+
+/** Keys used by the project's animation frames. Preload lists do not count: listing an asset is not using it. */
+export function animationAssetKeys(project: PfProject): Set<string> {
+  const keys = new Set<string>();
+  mapProjectRefs({ ...project, scenes: [] }, k => { keys.add(k); return k; });
+  return keys;
+}
+
+/** Every file an asset entry points to, as project-relative paths. */
+export function assetFiles(a: PfAsset): string[] {
+  const out: string[] = [];
+  for (const f of ['url', 'atlasUrl', 'dataUrl'] as const) if (typeof a[f] === 'string' && a[f]) out.push(a[f] as string);
+  if (Array.isArray(a.urls)) for (const u of a.urls) if (typeof u === 'string' && u) out.push(u);
+  return out;
+}
+
+export interface AssetReport {
+  /** Entries no scene object or animation uses. The game's own code may still use them. */
+  unused: string[];
+  /** Entries whose file is not on disk: key and the missing paths. */
+  missing: { key: string; files: string[] }[];
+}
+
+/** Compares the manifest with what the scenes use (`used`) and with the files that exist (`missingFiles`). */
+export function buildAssetReport(project: PfProject, used: Set<string>, missingFiles: Set<string>): AssetReport {
+  const unused = project.assets.filter(a => !used.has(a.key)).map(a => a.key);
+  const missing = project.assets
+    .map(a => ({ key: a.key, files: assetFiles(a).filter(f => missingFiles.has(f)) }))
+    .filter(m => m.files.length > 0);
+  return { unused, missing };
+}
+
 export interface AssetRename { from: string; to: string }
 
 /** Applies recorded renames, in order, to the objects of a scene that is not open. The same scene back if nothing changed. */
