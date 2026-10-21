@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { PROJECT_DIR, EDITOR_FILE } from '../shared/layout';
 import { MIGRATE_FILE } from '../shared/migrate';
+import { exportsHook, inScriptsFolder, type ScriptFile } from '../shared/scriptHooks';
 import { scanAssetLoads, scanGameConfig, scanSceneClasses, type SourceFile } from '../shared/codeScan';
 import { AUDIO_EXTS, DATA_EXTS, IMAGE_EXTS as IMPORT_IMAGE_EXTS, ASSET_FOLDER_CANDIDATES, cleanFileName, cleanSubfolder, detectAssetsFolder, importKind, uniqueFileName, type ImportKind } from '../shared/assetImport';
 
@@ -576,11 +577,21 @@ app.whenReady().then(() => {
     return found;
   });
 
-  /** Project-relative paths of script files (.js, .mjs, .ts, .mts; not .d.ts), for the Inspector's script picker (bounded). */
-  ipcMain.handle('fs:listScripts', (_e, rawDir: unknown) => {
+  /**
+   * Script files (.js, .mjs, .ts, .mts; not .d.ts) for the Inspector's script picker, bounded. Each is a candidate when its text
+   * exports a `create` or `update` hook (only the first 64 KB of a file up to 512 KB is read) or it is in a `scripts` folder.
+   */
+  ipcMain.handle('fs:listScripts', (_e, rawDir: unknown): ScriptFile[] => {
     const root = guardFolder(rawDir);
     if (!root) return [];
-    const found: string[] = [];
+    const found: ScriptFile[] = [];
+    const looksLikeScript = (file: string, rel: string): boolean => {
+      if (inScriptsFolder(rel)) return true;
+      try {
+        if (fs.statSync(file).size > 512 * 1024) return false;
+        return exportsHook(fs.readFileSync(file, 'utf-8').slice(0, 64 * 1024));
+      } catch { return false; }
+    };
     let visited = 0;
     const walk = (dir: string, depth: number) => {
       if (depth > 10 || found.length >= 1000 || visited > 20000) return;
@@ -592,11 +603,14 @@ app.whenReady().then(() => {
         if (entry.isSymbolicLink() || hidden(entry.name, isDir)) continue;
         const full = path.join(dir, entry.name);
         if (isDir) walk(full, depth + 1);
-        else if (/\.(m?js|m?ts)$/i.test(entry.name) && !/\.d\.[cm]?ts$/i.test(entry.name)) found.push(path.relative(root, full).replace(/\\/g, '/'));
+        else if (/\.(m?js|m?ts)$/i.test(entry.name) && !/\.d\.[cm]?ts$/i.test(entry.name)) {
+          const rel = path.relative(root, full).replace(/\\/g, '/');
+          found.push({ path: rel, candidate: looksLikeScript(full, rel) });
+        }
       }
     };
     walk(root, 0);
-    return found.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true }));
+    return found.sort((a, b) => a.path.localeCompare(b.path, undefined, { sensitivity: 'base', numeric: true }));
   });
 
   ipcMain.handle('shell:showItem', (_e, rawPath: unknown) => {

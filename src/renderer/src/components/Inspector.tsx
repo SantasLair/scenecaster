@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import SheetPreview from './SheetPreview';
 import Icon from './Icon';
 import type { PfAsset, PfObject } from '../../../shared/phaseform/types';
+import { pickableScripts, type ScriptFile } from '../../../shared/scriptHooks';
 import {
   advancedKeys, degToRad, getAt, isHexColor, isParamsObject, isScriptList, moveItem, PARAM_DEFAULTS, paramKind, parseNumStr, pointCount, radToDeg, sectionsFor, setAt,
   type FieldDef, type ParamKind,
@@ -221,12 +222,80 @@ function CopyButton({ text }: { text: string }) {
 
 const iconBtn = 'flex-shrink-0 px-1 text-xs text-gray-500 hover:text-[var(--gd-accent)] disabled:opacity-30 disabled:hover:text-gray-500';
 
+/**
+ * Adds a script: a button that opens a filter box over the project's script files, grouped by folder. By default only files that
+ * export a `create` or `update` hook (or sit in a `scripts` folder) are listed; "Show all files" lists every .js and .ts file.
+ * Arrow keys move, Enter adds, Escape closes. `files` is null while the project is being listed.
+ */
+function ScriptPicker({ files, attached, onPick }: { files: ScriptFile[] | null; attached: string[]; onPick(path: string): void }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [showAll, setShowAll] = useState(false);
+  const [active, setActive] = useState(0);
+  const activeRef = useRef<HTMLButtonElement>(null);
+  const list = useMemo(() => pickableScripts(files ?? [], attached, query, showAll), [files, attached, query, showAll]);
+  const hiddenCount = useMemo(() => (showAll ? 0 : pickableScripts(files ?? [], attached, query, true).length - list.length), [files, attached, query, showAll, list]);
+  useEffect(() => { activeRef.current?.scrollIntoView({ block: 'nearest' }); }, [active, open]);
+
+  const close = () => { setOpen(false); setQuery(''); setActive(0); };
+  const pick = (path: string) => { onPick(path); close(); };
+
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)} disabled={files === null}
+        className="w-full mt-1 py-1 rounded text-xs border border-gray-600 text-gray-300 hover:text-white hover:border-gray-500 disabled:opacity-50">
+        {files === null ? 'Loading scripts…' : '+ Add script…'}
+      </button>
+    );
+  }
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActive(Math.min(active + 1, list.length - 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(Math.max(active - 1, 0)); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (list[active]) pick(list[active].path); }
+    else if (e.key === 'Escape') { e.preventDefault(); close(); }
+  };
+  return (
+    <div className="mt-1 rounded border border-gray-600 bg-gray-900" onKeyDown={onKeyDown}>
+      <div className="flex items-center gap-1 p-1">
+        <input autoFocus value={query} placeholder="Filter scripts…" spellCheck={false}
+          onChange={e => { setQuery(e.target.value); setActive(0); }} className={`flex-1 min-w-0 ${inputCls}`} />
+        <button className={iconBtn} title="Close (Esc)" onClick={close}><Icon name="GuiClose" size={12} /></button>
+      </div>
+      <div className="max-h-48 overflow-y-auto">
+        {list.map((f, i) => {
+          const slash = f.path.lastIndexOf('/');
+          const dir = slash > 0 ? f.path.slice(0, slash + 1) : '';
+          const newGroup = i === 0 || list[i - 1].path.slice(0, list[i - 1].path.lastIndexOf('/') + 1) !== dir;
+          return (
+            <div key={f.path}>
+              {newGroup && dir !== '' && <div className="px-2 pt-1 text-[10px] font-mono text-gray-600 truncate">{dir}</div>}
+              <button ref={i === active ? activeRef : undefined} title={f.path} onClick={() => pick(f.path)} onMouseMove={() => setActive(i)}
+                className={`block w-full text-left px-3 py-0.5 text-xs font-mono truncate ${i === active ? 'bg-[var(--gd-tree-hover)] text-white' : 'text-gray-300'}`}>
+                {f.path.slice(slash + 1)}
+              </button>
+            </div>
+          );
+        })}
+        {list.length === 0 && (
+          <div className="px-2 py-2 text-xs text-gray-600">
+            {query ? 'No matching script.' : showAll ? 'No more script files in the project.' : 'No script with a create or update hook found.'}
+          </div>
+        )}
+      </div>
+      <label className="flex items-center justify-between gap-2 px-2 py-1 border-t border-gray-700 text-[11px] text-gray-500">
+        <span>Show all files{hiddenCount > 0 ? ` (${hiddenCount} more)` : ''}</span>
+        <input type="checkbox" checked={showAll} onChange={e => { setShowAll(e.target.checked); setActive(0); }} className="accent-blue-500 w-3.5 h-3.5" />
+      </label>
+    </div>
+  );
+}
+
 /** The object's `scripts`, in run order: add from the project's script files, reorder, remove. Paths are project-relative. */
 function ScriptsSection({ scripts, projectFolder, onChange }: {
   scripts: string[]; projectFolder: string | null; onChange: Props['onChange'];
 }) {
   // null until the project's script files are listed; a path is only flagged missing once the list is known.
-  const [available, setAvailable] = useState<string[] | null>(null);
+  const [available, setAvailable] = useState<ScriptFile[] | null>(null);
   useEffect(() => {
     let live = true;
     setAvailable(null);
@@ -235,17 +304,19 @@ function ScriptsSection({ scripts, projectFolder, onChange }: {
   }, [projectFolder]);
 
   const apply = (next: string[]) => onChange({ scripts: next.length > 0 ? next : undefined }, true);
-  const addable = (available ?? []).filter(p => !scripts.includes(p));
-  return (
+    return (
     <Section title="Scripts">
       <div className="text-[10px] text-gray-600 mb-1.5">Run in this order. Each may export <span className="font-mono">create</span> and <span className="font-mono">update</span>.</div>
       {scripts.map((p, i) => {
-        const missing = available !== null && !available.includes(p);
+        const missing = available !== null && !available.some(f => f.path === p);
+        const slash = p.lastIndexOf('/');
+        const dir = slash > 0 ? p.slice(0, slash + 1) : '';
         return (
-          <div key={p + i} className="flex items-center gap-1 py-0.5">
+          <div key={p + i} className="py-0.5">
+          <div className="flex items-center gap-1">
             <Icon name="Script" size={14} />
             <span className={`flex-1 min-w-0 truncate text-xs font-mono ${missing ? 'text-red-300' : 'text-gray-300'}`}
-              title={missing ? `${p} (missing from the project)` : p}>{p}{missing && ' (missing)'}</span>
+              title={missing ? `${p} (missing from the project)` : p}>{p.slice(slash + 1)}{missing && ' (missing)'}</span>
             <button className={iconBtn} title="Move up" disabled={i === 0} onClick={() => apply(moveItem(scripts, i, i - 1))}>↑</button>
             <button className={iconBtn} title="Move down" disabled={i === scripts.length - 1} onClick={() => apply(moveItem(scripts, i, i + 1))}>↓</button>
             <button className={iconBtn} title="Open in VS Code" disabled={missing || !projectFolder}
@@ -260,14 +331,12 @@ function ScriptsSection({ scripts, projectFolder, onChange }: {
               <Icon name="GuiClose" size={12} />
             </button>
           </div>
+          {dir && <div className="pl-[18px] text-[10px] font-mono text-gray-600 truncate" title={p}>{dir}</div>}
+          </div>
         );
       })}
       {scripts.length === 0 && <div className="text-xs text-gray-600 py-0.5">No scripts attached.</div>}
-      <select value="" disabled={!projectFolder || addable.length === 0} onChange={e => { if (e.target.value) apply([...scripts, e.target.value]); }}
-        className={`w-full mt-1 ${inputCls}`}>
-        <option value="">{available === null ? 'Loading scripts…' : addable.length === 0 ? 'No more script files in the project' : 'Add script…'}</option>
-        {addable.map(p => <option key={p} value={p}>{p}</option>)}
-      </select>
+      <ScriptPicker files={projectFolder ? available : []} attached={scripts} onPick={p => apply([...scripts, p])} />
     </Section>
   );
 }
