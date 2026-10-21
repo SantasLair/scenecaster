@@ -291,8 +291,8 @@ function ScriptPicker({ files, attached, onPick }: { files: ScriptFile[] | null;
 }
 
 /** The object's `scripts`, in run order: add from the project's script files, reorder, remove. Paths are project-relative. */
-function ScriptsSection({ scripts, projectFolder, onChange }: {
-  scripts: string[]; projectFolder: string | null; onChange: Props['onChange'];
+function ScriptsSection({ scripts, projectFolder, onChange, children }: {
+  scripts: string[]; projectFolder: string | null; onChange: Props['onChange']; children?: ReactNode;
 }) {
   // null until the project's script files are listed; a path is only flagged missing once the list is known.
   const [available, setAvailable] = useState<ScriptFile[] | null>(null);
@@ -337,6 +337,7 @@ function ScriptsSection({ scripts, projectFolder, onChange }: {
       })}
       {scripts.length === 0 && <div className="text-xs text-gray-600 py-0.5">No scripts attached.</div>}
       <ScriptPicker files={projectFolder ? available : []} attached={scripts} onPick={p => apply([...scripts, p])} />
+      {children}
     </Section>
   );
 }
@@ -365,7 +366,7 @@ function ParamValue({ value, onValue, onCommit, onOneShot }: {
  * The object's `params`, the plain JSON its scripts read as `ctx.params`: one row per key with a control inferred from the
  * value's type, an "Add param" row, and a raw-JSON toggle for the whole object. Shown once the object has scripts or params.
  */
-function ParamsSection({ params, onChange, onCommit }: { params: Record<string, unknown> | undefined; onChange: Props['onChange']; onCommit: () => void }) {
+function ParamsGroup({ params, onChange, onCommit }: { params: Record<string, unknown> | undefined; onChange: Props['onChange']; onCommit: () => void }) {
   const [raw, setRaw] = useState(false);
   const [name, setName] = useState('');
   const [kind, setKind] = useState<Exclude<ParamKind, 'json'>>('number');
@@ -380,7 +381,8 @@ function ParamsSection({ params, onChange, onCommit }: { params: Record<string, 
     setName('');
   };
   return (
-    <Section title="Params">
+    <div className="mt-2 pt-2 border-t border-gray-700">
+      <div className="text-[11px] font-medium text-gray-400 mb-0.5">Params</div>
       <div className="text-[10px] text-gray-600 mb-1.5">Plain JSON your scripts read as <span className="font-mono">ctx.params</span>.</div>
       <label className="flex items-center justify-between text-xs text-gray-400 mb-1.5">
         <span>Edit as raw JSON</span>
@@ -407,7 +409,7 @@ function ParamsSection({ params, onChange, onCommit }: { params: Record<string, 
           </div>
         </>
       )}
-    </Section>
+    </div>
   );
 }
 
@@ -588,13 +590,15 @@ export default function Inspector({ object, projectFolder, textureKeys, fontKeys
         );
       })()}
 
-      {(object.scripts === undefined || isScriptList(object.scripts)) && (
-        <ScriptsSection scripts={object.scripts ?? []} projectFolder={projectFolder} onChange={onChange} />
-      )}
-
-      {isParamsObject(object.params) || (object.params === undefined && isScriptList(object.scripts) && object.scripts.length > 0) ? (
-        <ParamsSection params={object.params as Record<string, unknown> | undefined} onChange={onChange} onCommit={onCommit} />
-      ) : null}
+      {/* Scripts and their params share one section: params are what the scripts read as ctx.params. */}
+      {(() => {
+        const scriptsOk = object.scripts === undefined || isScriptList(object.scripts);
+        const params = isParamsObject(object.params) || (object.params === undefined && isScriptList(object.scripts) && object.scripts.length > 0)
+          ? <ParamsGroup params={object.params as Record<string, unknown> | undefined} onChange={onChange} onCommit={onCommit} />
+          : null;
+        if (scriptsOk) return <ScriptsSection scripts={isScriptList(object.scripts) ? object.scripts : []} projectFolder={projectFolder} onChange={onChange}>{params}</ScriptsSection>;
+        return params && <Section title="Params">{params}</Section>; // a malformed `scripts` stays in Advanced
+      })()}
 
       {advanced.length > 0 && (
         <Section title="Advanced">
