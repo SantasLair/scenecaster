@@ -166,6 +166,7 @@ export default function App() {
             onDuplicate={duplicateObject} onRename={renameObject}
             onToggleVisible={toggleVisible} onToggleLocked={toggleLocked}
             onMove={moveObject} onAdd={addObject}
+            onOpenScript={p => { if (projectFolder) void api.openScriptInVSCode(projectFolder, p); }}
           />
         )}
         {isDraggingAsset && (

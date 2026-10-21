@@ -4,6 +4,7 @@ import type { PfObject } from '../../../shared/phaseform/types';
 import { isContainer } from '../../../shared/phaseform/types';
 import { labelOf, walk } from '../../../shared/phaseform/tree';
 import Icon, { type IconName } from './Icon';
+import { isScriptList } from './inspectorFields';
 
 export type AddKind = 'container' | 'rectangle' | 'ellipse' | 'triangle' | 'text';
 
@@ -22,6 +23,8 @@ interface Props {
   onMove(id: string, parentId: string | null, index: number): void;
   /** parentId = selected container or null. */
   onAdd(kind: AddKind, parentId: string | null): void;
+  /** Opens a script (project-relative path) in the code editor. */
+  onOpenScript(path: string): void;
 }
 
 const ADD_ITEMS: { kind: AddKind; label: string }[] = [
@@ -102,11 +105,14 @@ function RenameInput({ obj, onCommit, onCancel }: { obj: PfObject; onCommit(v: s
   );
 }
 
+const scriptsOf = (obj: PfObject): string[] => (isScriptList(obj.scripts) ? obj.scripts : []);
+
 const TreeRow = memo(function TreeRow({ row, selected, locked, renaming, drop, h }: {
   row: RowData; selected: boolean; locked: boolean; renaming: boolean; drop: DropPos | null; h: Handlers;
 }) {
   const { obj, depth, container, open } = row;
   const hidden = obj.visible === false;
+  const scripts = scriptsOf(obj);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => { if (selected) ref.current?.scrollIntoView({ block: 'nearest' }); }, [selected]);
 
@@ -139,6 +145,9 @@ const TreeRow = memo(function TreeRow({ row, selected, locked, renaming, drop, h
         : <span className="w-3 flex-shrink-0" />}
       <span className={`flex items-center gap-1.5 min-w-0 ${renaming ? 'flex-1' : 'flex-1'} ${hidden ? 'opacity-40' : ''}`}>
         <TypeIcon type={obj.type} />
+        {scripts.length > 0 && (
+          <span className="text-gray-500" title={`Scripts: ${scripts.join(', ')}`}><Icon name="Script" size={12} /></span>
+        )}
         {renaming
           ? <RenameInput obj={obj} onCommit={v => h.commitRename(obj.id, v)} onCancel={h.cancelRename} />
           : <span className="truncate">{labelOf(obj)}</span>}
@@ -161,9 +170,9 @@ const TreeRow = memo(function TreeRow({ row, selected, locked, renaming, drop, h
 
 type MenuState = { x: number; y: number; id: string | null; mode: 'context' | 'add' } | null;
 
-function Menu({ menu, parentId, canAct, onClose, onAdd, onRename, onDuplicate, onDelete }: {
-  menu: NonNullable<MenuState>; parentId: string | null; canAct: boolean; onClose(): void;
-  onAdd(kind: AddKind, parentId: string | null): void; onRename(): void; onDuplicate(): void; onDelete(): void;
+function Menu({ menu, parentId, canAct, scripts, onClose, onAdd, onRename, onDuplicate, onOpenScript, onDelete }: {
+  menu: NonNullable<MenuState>; parentId: string | null; canAct: boolean; scripts: string[]; onClose(): void;
+  onAdd(kind: AddKind, parentId: string | null): void; onRename(): void; onDuplicate(): void; onOpenScript(path: string): void; onDelete(): void;
 }) {
   const item = 'block w-full text-left px-3 py-1 text-gray-300 hover:bg-[var(--gd-tree-hover)] hover:text-white';
   const adds = (
@@ -189,6 +198,11 @@ function Menu({ menu, parentId, canAct, onClose, onAdd, onRename, onDuplicate, o
               <div className="my-1 border-t border-gray-700" />
               <button className={item} onClick={() => { onRename(); onClose(); }}>Rename<span className="float-right text-gray-500">F2</span></button>
               <button className={item} onClick={() => { onDuplicate(); onClose(); }}>Duplicate</button>
+              {scripts.map(p => (
+                <button key={p} className={`${item} flex items-center gap-2`} title={p} onClick={() => { onOpenScript(p); onClose(); }}>
+                  <Icon name="Script" size={12} />Open {p.slice(p.lastIndexOf('/') + 1)}
+                </button>
+              ))}
               <button className={`${item} !text-red-400`} onClick={() => { onDelete(); onClose(); }}>Delete<span className="float-right text-gray-500">Del</span></button>
             </>
           )}
@@ -381,11 +395,12 @@ export default function ObjectsPanel(props: Props) {
       </div>
 
       {menu && (
-        <Menu menu={menu} parentId={menuParent} canAct={menu.mode === 'context' && !!menuObj}
+        <Menu menu={menu} parentId={menuParent} canAct={menu.mode === 'context' && !!menuObj} scripts={menuObj ? scriptsOf(menuObj) : []}
           onClose={() => setMenu(null)}
           onAdd={addAndOpen}
           onRename={() => menu.id && setRenamingId(menu.id)}
           onDuplicate={() => menu.id && props.onDuplicate(menu.id)}
+          onOpenScript={props.onOpenScript}
           onDelete={() => menu.id && props.onDelete(menu.id)} />
       )}
     </div>

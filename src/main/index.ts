@@ -367,6 +367,18 @@ app.whenReady().then(() => {
       .unref();
   });
 
+  /** Opens a project script in VS Code (in the project's window). `rel` is project-relative and must name an existing script file. */
+  ipcMain.handle('vscode:openFile', (_e, rawFolder: unknown, rawRel: unknown) => {
+    const folder = guardFolder(rawFolder) ? path.resolve(String(rawFolder)) : null;
+    if (!folder || typeof rawRel !== 'string' || !/\.(m?js|m?ts)$/i.test(rawRel)) return false;
+    const file = guardFile(folder, rawRel);
+    if (!file || !fs.existsSync(file)) return false;
+    spawn('code', IS_WIN ? [`"${folder}"`, `"${file}"`] : [folder, file], { shell: IS_WIN, detached: true, stdio: 'ignore' })
+      .on('error', () => {})
+      .unref();
+    return true;
+  });
+
   // Only the local dev server URL the editor itself started may be opened.
   ipcMain.handle('shell:openLocal', (_e, rawUrl: unknown) => {
     try {

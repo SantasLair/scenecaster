@@ -49,6 +49,9 @@ export function* filtersOf(o: PfObject): Generator<Record<string, unknown>> {
   if (filters) { yield* list(filters.internal); yield* list(filters.external); }
 }
 
+/** A script path must be relative to the project root: forward slashes, no drive or leading slash, no ".." segment. */
+const isRelativeScriptPath = (p: string) => !p.includes('\\') && !/^([a-zA-Z]:|\/)/.test(p) && !p.split('/').includes('..');
+
 export function validateScene(scene: unknown): Problem[] {
   const problems: Problem[] = [];
   if (!checkSceneSchema(scene)) {
@@ -74,6 +77,15 @@ export function validateScene(scene: unknown): Problem[] {
   // Anchors follow the game's edges, so they only make sense on root objects: a container's children follow the container.
   for (const { obj, parent } of entries) {
     if (parent && obj.anchor !== undefined) problems.push({ level: 'warning', message: `"${obj.id}": anchor is ignored on a child of "${parent.id}" (anchors apply to root objects).` });
+  }
+  // Scripts are paths relative to the project root, run in order; a repeat runs twice, and params do nothing without scripts.
+  for (const { obj } of entries) {
+    const scripts = Array.isArray(obj.scripts) ? obj.scripts.filter((s): s is string => typeof s === 'string') : [];
+    for (const [i, s] of scripts.entries()) {
+      if (scripts.indexOf(s) !== i) problems.push({ level: 'warning', message: `"${obj.id}": script "${s}" is attached more than once.` });
+      else if (!isRelativeScriptPath(s)) problems.push({ level: 'warning', message: `"${obj.id}": script path "${s}" should be relative to the project root, with forward slashes and no "..".` });
+    }
+    if (obj.params !== undefined && scripts.length === 0) problems.push({ level: 'warning', message: `"${obj.id}": params are set but no script is attached to read them.` });
   }
   for (const { obj } of entries) {
     for (const f of filtersOf(obj)) {

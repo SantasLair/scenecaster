@@ -95,6 +95,8 @@ interface ElectronAPI {
   removeDevServerListeners: () => void;
   openLocalUrl: (url: string) => Promise<void>;
   openVSCode: (folder: string) => Promise<void>;
+  /** Opens a project-relative script file in VS Code; false when it is missing or not a script. */
+  openScriptInVSCode: (folder: string, rel: string) => Promise<boolean>;
   /** `entry`/`importPath` are set when the module entry could be found in index.html. */
   installBridge: (folder: string) => Promise<IpcResult & { entry?: string; importPath?: string }>;
 }

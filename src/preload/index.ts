@@ -64,6 +64,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // VS Code
   openVSCode: (folder: string) => ipcRenderer.invoke('vscode:open', folder),
+  /** Opens a project-relative script file in VS Code; false when it is missing or not a script. */
+  openScriptInVSCode: (folder: string, rel: string) => ipcRenderer.invoke('vscode:openFile', folder, rel),
 
   // Browser
   openLocalUrl: (url: string) => ipcRenderer.invoke('shell:openLocal', url),

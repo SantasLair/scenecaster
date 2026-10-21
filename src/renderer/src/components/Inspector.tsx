@@ -248,6 +248,10 @@ function ScriptsSection({ scripts, projectFolder, onChange }: {
               title={missing ? `${p} (missing from the project)` : p}>{p}{missing && ' (missing)'}</span>
             <button className={iconBtn} title="Move up" disabled={i === 0} onClick={() => apply(moveItem(scripts, i, i - 1))}>↑</button>
             <button className={iconBtn} title="Move down" disabled={i === scripts.length - 1} onClick={() => apply(moveItem(scripts, i, i + 1))}>↓</button>
+            <button className={iconBtn} title="Open in VS Code" disabled={missing || !projectFolder}
+              onClick={() => { if (projectFolder) void window.electronAPI.openScriptInVSCode(projectFolder, p); }}>
+              <Icon name="Script" size={12} />
+            </button>
             <button className={iconBtn} title="Show in file manager" disabled={missing || !projectFolder}
               onClick={() => { if (projectFolder) void window.electronAPI.showItem(`${projectFolder}/${p}`); }}>
               <Icon name="Folder" size={12} />

@@ -104,6 +104,18 @@ describe('validation', () => {
     expect(validateScene(bad).some(p => p.level === 'error')).toBe(true);
   });
 
+  it('warns about repeated or non-relative scripts and params without scripts', () => {
+    const msgs = (o: object) => validateScene({ ...newScene('Main'), objects: [{ id: 'g', type: 'graphics', ...o }] }).map(p => p.message);
+    expect(msgs({ scripts: ['a.js'], params: { n: 1 } })).toEqual([]);
+    expect(msgs({ scripts: ['a.js', 'b.js', 'a.js'] })).toEqual(['"g": script "a.js" is attached more than once.']);
+    expect(msgs({ scripts: ['../a.js'] })).toHaveLength(1);
+    expect(msgs({ scripts: ['/a.js'] })).toHaveLength(1);
+    expect(msgs({ scripts: ['C:/a.js'] })).toHaveLength(1);
+    expect(msgs({ scripts: ['sub\\a.js'] })).toHaveLength(1);
+    expect(msgs({ scripts: ['sub/a..b.js'] })).toEqual([]);
+    expect(msgs({ params: { n: 1 } })).toEqual(['"g": params are set but no script is attached to read them.']);
+  });
+
   it('reports project problems the schema cannot express', () => {
     const p = { ...project, entry: 'Missing', scenes: [...project.scenes, { key: 'Main', path: 'scenes/other.phaseform.json' }] };
     const msgs = validateProject(p).map(x => x.message);
