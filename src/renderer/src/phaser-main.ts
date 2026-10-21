@@ -419,6 +419,7 @@ class EditorScene extends Phaser.Scene {
       this.roots = r.objects;
       this.register(r.byId);
       warnings.push(...r.warnings.filter(keep));
+      this.drawPlaceholders(objects);
       return;
     } catch {
       this.cleanupSince(before);
@@ -436,6 +437,7 @@ class EditorScene extends Phaser.Scene {
         this.roots.push(...r.objects);
         this.register(r.byId);
         warnings.push(...r.warnings.filter(keep));
+        this.drawPlaceholders([obj]);
       } catch (e) {
         this.cleanupSince(before);
         for (const i of ids) if (!seen.has(i)) this.typeById.delete(i);
@@ -446,6 +448,40 @@ class EditorScene extends Phaser.Scene {
         this.register(new Map([[obj.id, ph]]));
       }
       for (const i of ids) seen.add(i);
+    }
+  }
+
+  /**
+   * Scripts do not run here, so a code-drawn `graphics` object would be empty. Draws its `placeholder` (rect, ellipse or polygon;
+   * an image placeholder gets an outline) into it, in local space from (0, 0). Without a fill or stroke, a thin outline marks it.
+   */
+  private drawPlaceholders(objects: PfObject[]) {
+    const color = (v: unknown) => (typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v) ? parseInt(v.slice(1), 16) : null);
+    for (const { obj } of walk(objects)) {
+      const ph = obj.placeholder as Record<string, unknown> | undefined;
+      const go = this.objById.get(obj.id);
+      if (!ph || typeof ph !== 'object' || !(go instanceof Phaser.GameObjects.Graphics)) continue;
+      const w = num(ph.width, 0), h = num(ph.height, 0);
+      if (!(w > 0 && h > 0)) continue;
+      const fill = color(ph.fill), stroke = color(ph.stroke), alpha = Math.min(1, Math.max(0, num(ph.alpha, 1)));
+      const marker = fill === null && stroke === null || ph.kind === 'image';
+      go.clear();
+      if (fill !== null && ph.kind !== 'image') go.fillStyle(fill, alpha);
+      if (stroke !== null && ph.kind !== 'image') go.lineStyle(num(ph.strokeWidth, 1), stroke, alpha);
+      else if (marker) go.lineStyle(1, 0x8899aa, 0.8);
+      const pts = Array.isArray(ph.points)
+        ? (ph.points as Vec2[]).filter(p => p && typeof p.x === 'number' && typeof p.y === 'number').map(p => new Phaser.Math.Vector2(p.x, p.y))
+        : [];
+      if (ph.kind === 'ellipse') {
+        if (fill !== null) go.fillEllipse(w / 2, h / 2, w, h);
+        if (stroke !== null || marker) go.strokeEllipse(w / 2, h / 2, w, h);
+      } else if (ph.kind === 'polygon' && pts.length >= 3) {
+        if (fill !== null) go.fillPoints(pts, true);
+        if (stroke !== null || marker) go.strokePoints(pts, true, true);
+      } else {
+        if (fill !== null && ph.kind !== 'image') go.fillRect(0, 0, w, h);
+        if (stroke !== null || marker) go.strokeRect(0, 0, w, h);
+      }
     }
   }
 

@@ -7,7 +7,7 @@ export type FieldKind =
   | 'text' | 'textarea' | 'number' | 'int' | 'angle' | 'bool' | 'color' | 'select'
   | 'vec2' | 'numstr' | 'texture' | 'font' | 'presence' | 'json' | 'points';
 
-export const SECTIONS = ['Identity', 'Transform', 'Appearance', 'Depth', 'Texture', 'Tiling', 'Text', 'Bitmap Text', 'Shape'] as const;
+export const SECTIONS = ['Identity', 'Transform', 'Appearance', 'Depth', 'Texture', 'Tiling', 'Text', 'Bitmap Text', 'Shape', 'Placeholder'] as const;
 export type Section = typeof SECTIONS[number];
 
 export interface FieldDef {
@@ -53,6 +53,14 @@ export const TINT_MODES = ['multiply', 'fill', 'add', 'screen', 'overlay', 'hard
 const f = (d: FieldDef): FieldDef => d;
 const hasFill = (o: PfObject) => 'fill' in o && o.fill != null;
 const hasStroke = (o: PfObject) => 'stroke' in o && o.stroke != null;
+
+// Placeholder: reference visual for code-drawn objects. Offered on `graphics` objects and on any object that has scripts
+// or already has one. rect and ellipse get fields; polygon and image placeholders (which need points or a path) stay raw JSON.
+const placeholderOf = (o: PfObject) => (typeof o.placeholder === 'object' && o.placeholder !== null ? o.placeholder as { kind?: unknown } : undefined);
+const hasScripts = (o: PfObject) => Array.isArray(o.scripts) && o.scripts.length > 0;
+const offersPlaceholder = (o: PfObject) => o.type === 'graphics' || hasScripts(o) || placeholderOf(o) !== undefined;
+const simplePlaceholder = (o: PfObject) => { const k = placeholderOf(o)?.kind; return k === 'rect' || k === 'ellipse'; };
+const complexPlaceholder = (o: PfObject) => placeholderOf(o) !== undefined && !simplePlaceholder(o);
 
 export const FIELDS: readonly FieldDef[] = [
   // Identity
@@ -138,6 +146,19 @@ export const FIELDS: readonly FieldDef[] = [
   f({ path: ['stroke', 'width'], label: 'Stroke width', section: 'Shape', kind: 'number', min: 0, step: 0.5, def: 1, when: hasStroke, types: SHAPES }),
   f({ path: ['stroke', 'alpha'], label: 'Stroke alpha', section: 'Shape', kind: 'number', min: 0, max: 1, step: 0.05, def: 1, when: hasStroke, types: SHAPES }),
   f({ path: ['stroke', 'endWidth'], label: 'End width', section: 'Shape', kind: 'number', min: 0, step: 0.5, when: hasStroke, types: ['line'] }),
+
+  // Placeholder (editor-only; the loader never draws it)
+  f({ path: ['placeholder'], label: 'Placeholder', section: 'Placeholder', kind: 'presence', enable: { kind: 'rect', width: 64, height: 64, fill: '#ffffff', alpha: 0.5 }, when: offersPlaceholder, types: ALL_TYPES,
+    hint: 'Scenecaster does not run scripts, so this stands in for what the code draws. The game never draws it.' }),
+  f({ path: ['placeholder', 'kind'], label: 'Kind', section: 'Placeholder', kind: 'select', options: ['rect', 'ellipse'], required: true, when: simplePlaceholder, types: ALL_TYPES }),
+  f({ path: ['placeholder', 'width'], label: 'Width', section: 'Placeholder', kind: 'number', min: 1, step: 1, def: 64, required: true, when: simplePlaceholder, types: ALL_TYPES,
+    hint: 'Width and height reach scripts as ctx.size.' }),
+  f({ path: ['placeholder', 'height'], label: 'Height', section: 'Placeholder', kind: 'number', min: 1, step: 1, def: 64, required: true, when: simplePlaceholder, types: ALL_TYPES }),
+  f({ path: ['placeholder', 'fill'], label: 'Fill', section: 'Placeholder', kind: 'color', def: '#ffffff', when: simplePlaceholder, types: ALL_TYPES }),
+  f({ path: ['placeholder', 'stroke'], label: 'Stroke', section: 'Placeholder', kind: 'color', def: '#ffffff', when: simplePlaceholder, types: ALL_TYPES }),
+  f({ path: ['placeholder', 'strokeWidth'], label: 'Stroke width', section: 'Placeholder', kind: 'number', min: 0, step: 0.5, def: 1, when: simplePlaceholder, types: ALL_TYPES }),
+  f({ path: ['placeholder', 'alpha'], label: 'Alpha', section: 'Placeholder', kind: 'number', min: 0, max: 1, step: 0.05, def: 1, when: simplePlaceholder, types: ALL_TYPES }),
+  f({ path: ['placeholder'], label: 'Placeholder (polygon or image: raw JSON)', section: 'Placeholder', kind: 'json', when: complexPlaceholder, types: ALL_TYPES }),
 ];
 
 /** Fields that apply to `type`. Depth-like fields are dropped for nested objects when `topLevel` is false. */

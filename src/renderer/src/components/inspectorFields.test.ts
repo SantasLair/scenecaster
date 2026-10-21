@@ -51,8 +51,8 @@ describe('rotation conversion', () => {
 
 describe('advancedKeys', () => {
   it('lists fields the table does not cover, never children', () => {
-    const o: PfObject = { id: 'a', type: 'container', x: 1, children: [], filters: [], placeholder: { kind: 'rect' }, extensions: {}, origin: { x: 0, y: 0 }, weird: 3 };
-    expect(advancedKeys(o)).toEqual(['filters', 'placeholder', 'extensions', 'origin', 'weird']);
+    const o: PfObject = { id: 'a', type: 'container', x: 1, children: [], filters: [], data: { z: 1 }, extensions: {}, origin: { x: 0, y: 0 }, weird: 3 };
+    expect(advancedKeys(o)).toEqual(['filters', 'data', 'extensions', 'origin', 'weird']);
   });
   it('does not list covered fields', () => {
     const o: PfObject = { id: 'a', type: 'image', key: 'k', x: 1, tint: '#ffffff', data: { z: 1 } };
@@ -62,6 +62,23 @@ describe('advancedKeys', () => {
     const o: PfObject = { id: 'a', type: 'image', key: 'k', depth: 3 };
     expect(advancedKeys(o, true)).toEqual([]);
     expect(advancedKeys(o, false)).toEqual(['depth']);
+  });
+});
+
+describe('placeholder fields', () => {
+  const shown = (o: PfObject) => fieldsFor(o.type).filter(d => d.section === 'Placeholder' && (!d.when || d.when(o))).map(d => d.path.join('.') + ':' + d.kind);
+  it('offers only the toggle on a graphics object or a scripted object, and nothing on a plain one', () => {
+    expect(shown({ id: 'a', type: 'graphics' })).toEqual(['placeholder:presence']);
+    expect(shown({ id: 'a', type: 'image', key: 'k', scripts: ['a.js'] })).toEqual(['placeholder:presence']);
+    expect(shown({ id: 'a', type: 'image', key: 'k' })).toEqual([]);
+  });
+  it('shows rect and ellipse fields, but raw JSON for polygon and image', () => {
+    expect(shown({ id: 'a', type: 'graphics', placeholder: { kind: 'rect', width: 1, height: 1 } })).toContain('placeholder.width:number');
+    expect(shown({ id: 'a', type: 'graphics', placeholder: { kind: 'polygon', width: 1, height: 1, points: [] } })).toEqual(['placeholder:presence', 'placeholder:json']);
+    expect(shown({ id: 'a', type: 'graphics', placeholder: { kind: 'image', width: 1, height: 1, path: 'a.png' } })).toEqual(['placeholder:presence', 'placeholder:json']);
+  });
+  it('keeps placeholder out of Advanced', () => {
+    expect(advancedKeys({ id: 'a', type: 'graphics', placeholder: { kind: 'rect' } })).toEqual([]);
   });
 });
 

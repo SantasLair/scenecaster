@@ -438,11 +438,14 @@ function Field({ def, obj, textureKeys, fontKeys, assets, onChange, onCommit }: 
     case 'presence': {
       const on = present;
       return (
-        <label className="flex items-center justify-between py-1 text-xs text-gray-400 mt-1">
-          <span>{def.label}</span>
-          <input type="checkbox" checked={on} className="accent-blue-500 w-4 h-4"
-            onChange={e => set(e.target.checked ? def.enable : undefined, true)} />
-        </label>
+        <div>
+          <label className="flex items-center justify-between py-1 text-xs text-gray-400 mt-1">
+            <span>{def.label}</span>
+            <input type="checkbox" checked={on} className="accent-blue-500 w-4 h-4"
+              onChange={e => set(e.target.checked ? def.enable : undefined, true)} />
+          </label>
+          {def.hint && <div className="text-[10px] text-gray-600">{def.hint}</div>}
+        </div>
       );
     }
     case 'json':
@@ -484,9 +487,10 @@ export default function Inspector({ object, projectFolder, textureKeys, fontKeys
         ))}
       </Section>
 
-      {sections.filter(([s]) => s !== 'Identity').map(([section, defs]) => (
+      {sections.filter(([s]) => s !== 'Identity').map(([section, defs]) => [section, defs.filter(d => !d.when || d.when(object))] as const)
+        .filter(([, shown]) => shown.length > 0).map(([section, shown]) => (
         <Section key={section} title={section}>
-          {defs.filter(d => !d.when || d.when(object)).map(def => (
+          {shown.map(def => (
             <Field key={def.path.join('.') + def.kind} def={def} obj={object} textureKeys={textureKeys} fontKeys={fontKeys} assets={assets}
               onChange={onChange} onCommit={onCommit} />
           ))}
