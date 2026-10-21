@@ -161,6 +161,22 @@ export function coveredKeys(type: string, topLevel = true): Set<string> {
 /** True for a well-formed `scripts` value (an array of strings): the Scripts section edits it; anything else stays raw JSON. */
 export const isScriptList = (v: unknown): v is string[] => Array.isArray(v) && v.every(s => typeof s === 'string');
 
+/** True for a well-formed `params` value (a plain JSON object): the Params section edits it; anything else stays raw JSON. */
+export const isParamsObject = (v: unknown): v is Record<string, unknown> => isRec(v);
+
+export type ParamKind = 'number' | 'bool' | 'color' | 'text' | 'json';
+
+/** How the Params table edits a value, inferred from it: a `#rrggbb` string is a colour; objects, arrays and null stay JSON. */
+export function paramKind(v: unknown): ParamKind {
+  if (typeof v === 'number') return 'number';
+  if (typeof v === 'boolean') return 'bool';
+  if (typeof v === 'string') return isHexColor(v) ? 'color' : 'text';
+  return 'json';
+}
+
+/** The value a newly added param of `kind` starts with. */
+export const PARAM_DEFAULTS: Record<Exclude<ParamKind, 'json'>, unknown> = { number: 0, bool: false, color: '#ffffff', text: '' };
+
 /** Moves the item at `from` to `to`; returns the same array when nothing would change. */
 export function moveItem<T>(list: readonly T[], from: number, to: number): T[] {
   const out = [...list];
@@ -172,7 +188,7 @@ export function moveItem<T>(list: readonly T[], from: number, to: number): T[] {
 /** Fields present on the object that the table does not cover for its type, in object order: edited as raw JSON. */
 export function advancedKeys(obj: PfObject, topLevel = true): string[] {
   const covered = coveredKeys(obj.type, topLevel);
-  return Object.keys(obj).filter(k => !covered.has(k) && !(k === 'scripts' && isScriptList(obj[k])));
+  return Object.keys(obj).filter(k => !covered.has(k) && !(k === 'scripts' && isScriptList(obj[k])) && !(k === 'params' && isParamsObject(obj[k])));
 }
 
 export const radToDeg = (r: number) => Number(((r * 180) / Math.PI).toFixed(4));

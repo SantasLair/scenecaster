@@ -3,8 +3,8 @@ import SheetPreview from './SheetPreview';
 import Icon from './Icon';
 import type { PfAsset, PfObject } from '../../../shared/phaseform/types';
 import {
-  advancedKeys, degToRad, getAt, isHexColor, isScriptList, moveItem, parseNumStr, pointCount, radToDeg, sectionsFor, setAt,
-  type FieldDef,
+  advancedKeys, degToRad, getAt, isHexColor, isParamsObject, isScriptList, moveItem, PARAM_DEFAULTS, paramKind, parseNumStr, pointCount, radToDeg, sectionsFor, setAt,
+  type FieldDef, type ParamKind,
 } from './inspectorFields';
 
 interface Props {
@@ -268,6 +268,76 @@ function ScriptsSection({ scripts, projectFolder, onChange }: {
   );
 }
 
+// ---------------------------------------------------------------- params
+
+/** One param's control, chosen from its value's type; nested values (objects, arrays, null) get a small JSON box. */
+function ParamValue({ value, onValue, onCommit, onOneShot }: {
+  value: unknown; onValue(v: unknown): void; onCommit(): void; onOneShot(v: unknown): void;
+}) {
+  switch (paramKind(value)) {
+    case 'number':
+      return <NumberInput value={value as number} def={0} step={Number.isInteger(value) ? 1 : 0.01} onValue={onValue} onCommit={onCommit} />;
+    case 'bool':
+      return <input type="checkbox" checked={value as boolean} onChange={e => onOneShot(e.target.checked)} className="accent-blue-500 w-4 h-4" />;
+    case 'color':
+      return <ColorInput value={value as string} onValue={onValue} onCommit={onCommit} onOneShot={onOneShot} />;
+    case 'text':
+      return <TextInput value={value as string} onValue={onValue} onCommit={onCommit} />;
+    default:
+      return <div className="flex-1 min-w-0"><JsonBox value={value} required rows={3} onApply={onOneShot} /></div>;
+  }
+}
+
+/**
+ * The object's `params`, the plain JSON its scripts read as `ctx.params`: one row per key with a control inferred from the
+ * value's type, an "Add param" row, and a raw-JSON toggle for the whole object. Shown once the object has scripts or params.
+ */
+function ParamsSection({ params, onChange, onCommit }: { params: Record<string, unknown> | undefined; onChange: Props['onChange']; onCommit: () => void }) {
+  const [raw, setRaw] = useState(false);
+  const [name, setName] = useState('');
+  const [kind, setKind] = useState<Exclude<ParamKind, 'json'>>('number');
+  const current = params ?? {};
+  const keys = Object.keys(current);
+  const taken = name.trim() !== '' && Object.hasOwn(current, name.trim());
+  const apply = (next: Record<string, unknown>, commit: boolean) => onChange({ params: Object.keys(next).length > 0 ? next : undefined }, commit);
+  const add = () => {
+    const key = name.trim();
+    if (!key || taken) return;
+    apply({ ...current, [key]: PARAM_DEFAULTS[kind] }, true);
+    setName('');
+  };
+  return (
+    <Section title="Params">
+      <div className="text-[10px] text-gray-600 mb-1.5">Plain JSON your scripts read as <span className="font-mono">ctx.params</span>.</div>
+      <label className="flex items-center justify-between text-xs text-gray-400 mb-1.5">
+        <span>Edit as raw JSON</span>
+        <input type="checkbox" checked={raw} onChange={e => setRaw(e.target.checked)} className="accent-blue-500 w-4 h-4" />
+      </label>
+      {raw ? (
+        <JsonBox value={params} rows={6} onApply={v => onChange({ params: isParamsObject(v) && Object.keys(v).length > 0 ? v : undefined }, true)} />
+      ) : (
+        <>
+          {keys.length === 0 && <div className="text-xs text-gray-600 py-0.5">No params.</div>}
+          {keys.map(k => (
+            <Row key={k} label={k} tall={paramKind(current[k]) === 'json'} onReset={() => apply(Object.fromEntries(keys.filter(o => o !== k).map(o => [o, current[o]])), true)}>
+              <ParamValue value={current[k]} onValue={v => apply({ ...current, [k]: v }, false)} onCommit={onCommit}
+                onOneShot={v => apply({ ...current, [k]: v }, true)} />
+            </Row>
+          ))}
+          <div className="flex items-center gap-1 mt-1.5">
+            <TextInput value={name} onValue={setName} onCommit={() => { /* added with the button or Enter */ }} placeholder="New param name" />
+            <select value={kind} onChange={e => setKind(e.target.value as typeof kind)} className={inputCls}>
+              <option value="number">number</option><option value="text">text</option><option value="bool">bool</option><option value="color">color</option>
+            </select>
+            <button onClick={add} disabled={!name.trim() || taken} title={taken ? 'A param with that name exists' : 'Add the param'}
+              className="px-2 py-0.5 rounded text-xs border border-gray-600 text-gray-300 hover:text-white disabled:opacity-40">Add</button>
+          </div>
+        </>
+      )}
+    </Section>
+  );
+}
+
 // ---------------------------------------------------------------- one table field
 
 function Field({ def, obj, textureKeys, fontKeys, assets, onChange, onCommit }: {
@@ -444,6 +514,10 @@ export default function Inspector({ object, projectFolder, textureKeys, fontKeys
       {(object.scripts === undefined || isScriptList(object.scripts)) && (
         <ScriptsSection scripts={object.scripts ?? []} projectFolder={projectFolder} onChange={onChange} />
       )}
+
+      {isParamsObject(object.params) || (object.params === undefined && isScriptList(object.scripts) && object.scripts.length > 0) ? (
+        <ParamsSection params={object.params as Record<string, unknown> | undefined} onChange={onChange} onCommit={onCommit} />
+      ) : null}
 
       {advanced.length > 0 && (
         <Section title="Advanced">

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PfObject } from '../../../shared/phaseform/types';
-import { advancedKeys, degToRad, fieldsFor, getAt, moveItem, parseNumStr, radToDeg, setAt } from './inspectorFields';
+import { advancedKeys, degToRad, fieldsFor, getAt, moveItem, paramKind, parseNumStr, radToDeg, setAt } from './inspectorFields';
 
 const keys = (type: string, top = true) => new Set(fieldsFor(type, top).map(d => d.path[0]));
 
@@ -51,8 +51,8 @@ describe('rotation conversion', () => {
 
 describe('advancedKeys', () => {
   it('lists fields the table does not cover, never children', () => {
-    const o: PfObject = { id: 'a', type: 'container', x: 1, children: [], filters: [], params: { a: 1 }, extensions: {}, origin: { x: 0, y: 0 }, weird: 3 };
-    expect(advancedKeys(o)).toEqual(['filters', 'params', 'extensions', 'origin', 'weird']);
+    const o: PfObject = { id: 'a', type: 'container', x: 1, children: [], filters: [], placeholder: { kind: 'rect' }, extensions: {}, origin: { x: 0, y: 0 }, weird: 3 };
+    expect(advancedKeys(o)).toEqual(['filters', 'placeholder', 'extensions', 'origin', 'weird']);
   });
   it('does not list covered fields', () => {
     const o: PfObject = { id: 'a', type: 'image', key: 'k', x: 1, tint: '#ffffff', data: { z: 1 } };
@@ -70,6 +70,20 @@ describe('scripts', () => {
     expect(advancedKeys({ id: 'a', type: 'graphics', scripts: ['a.js'] })).toEqual([]);
     expect(advancedKeys({ id: 'a', type: 'graphics', scripts: 'a.js' })).toEqual(['scripts']);
     expect(advancedKeys({ id: 'a', type: 'graphics', scripts: ['a.js', 3] })).toEqual(['scripts']);
+  });
+  it('keeps an object params out of Advanced, but an array or string in', () => {
+    expect(advancedKeys({ id: 'a', type: 'graphics', params: { seconds: 5 } })).toEqual([]);
+    expect(advancedKeys({ id: 'a', type: 'graphics', params: [1] })).toEqual(['params']);
+    expect(advancedKeys({ id: 'a', type: 'graphics', params: 'x' })).toEqual(['params']);
+  });
+  it('infers an editor for each param value', () => {
+    expect(paramKind(5)).toBe('number');
+    expect(paramKind(true)).toBe('bool');
+    expect(paramKind('#ffcc33')).toBe('color');
+    expect(paramKind('ffcc33')).toBe('text');
+    expect(paramKind({ a: 1 })).toBe('json');
+    expect(paramKind([1])).toBe('json');
+    expect(paramKind(null)).toBe('json');
   });
   it('moves items and ignores out-of-range moves', () => {
     expect(moveItem(['a', 'b', 'c'], 0, 1)).toEqual(['b', 'a', 'c']);
