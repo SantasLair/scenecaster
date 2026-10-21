@@ -68,6 +68,8 @@ interface ElectronAPI {
   /** null: the folder is outside the opened project or cannot be read. */
   listDir: (dir: string) => Promise<FsEntry[] | null>;
   findFiles: (dir: string, query: string) => Promise<FsEntry[]>;
+  /** Project-relative paths of the project's script files (.js, .mjs, .ts, .mts), for attaching to objects. */
+  listScripts: (folder: string) => Promise<string[]>;
   showItem: (path: string) => Promise<void>;
   /** Reads the game's scripts (read-only) and reports scene classes, game config and asset loads. */
   scanSource: (folder: string) => Promise<SourceScan | null>;

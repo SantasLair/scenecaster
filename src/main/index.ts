@@ -564,6 +564,29 @@ app.whenReady().then(() => {
     return found;
   });
 
+  /** Project-relative paths of script files (.js, .mjs, .ts, .mts; not .d.ts), for the Inspector's script picker (bounded). */
+  ipcMain.handle('fs:listScripts', (_e, rawDir: unknown) => {
+    const root = guardFolder(rawDir);
+    if (!root) return [];
+    const found: string[] = [];
+    let visited = 0;
+    const walk = (dir: string, depth: number) => {
+      if (depth > 10 || found.length >= 1000 || visited > 20000) return;
+      let entries: fs.Dirent[];
+      try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+      for (const entry of entries) {
+        visited++;
+        const isDir = entry.isDirectory();
+        if (entry.isSymbolicLink() || hidden(entry.name, isDir)) continue;
+        const full = path.join(dir, entry.name);
+        if (isDir) walk(full, depth + 1);
+        else if (/\.(m?js|m?ts)$/i.test(entry.name) && !/\.d\.[cm]?ts$/i.test(entry.name)) found.push(path.relative(root, full).replace(/\\/g, '/'));
+      }
+    };
+    walk(root, 0);
+    return found.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true }));
+  });
+
   ipcMain.handle('shell:showItem', (_e, rawPath: unknown) => {
     const target = guardPath(rawPath);
     if (target) shell.showItemInFolder(target);

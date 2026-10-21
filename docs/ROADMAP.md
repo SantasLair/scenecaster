@@ -163,7 +163,13 @@ Most types arrive with Phase 2 (the loader builds them); this phase adds editor 
 - [~] **M** **Anchors for UI scenes.** Done: the Inspector picker and the validation warning. Still to do: preview at a few canvas sizes (call the loader's `layout(width, height)` for a chosen size; the viewport draws the design size today).
 - [ ] **M** Animations (defined in the project file).
 - [ ] **M** Filters and masks with live preview.
-- [ ] **S** Attaching scripts by path.
+- [~] **S** **Scripts in the Inspector.** *(Step 1 done: a "Scripts" section on every object with an ordered list, move up/down buttons (not drag), remove, show in file manager, a red "(missing)" flag and an "Add script…" picker fed by the new `fs:listScripts` call (.js, .mjs, .ts, .mts under the project, hidden folders skipped). A malformed `scripts` value stays in Advanced. Still to do: steps 2 to 5, and drag-reorder if the buttons feel clumsy.)* Today `scripts`, `params` and `placeholder` only show as raw JSON under Advanced, and the viewport does not run scripts, so a code-drawn object is invisible. Build in this order:
+  1. **Scripts section** (any object type): an ordered, drag-reorderable list of script paths; "Add script" picks from the project's `.js`/`.ts` files (like the texture picker); a missing path shows red "(missing)"; open-in-editor button; no new format fields.
+  2. **Params table:** key/value rows with the type inferred (number, string, bool, `#rrggbb` colour) using the existing field controls, and a raw-JSON toggle for nested values. Replaces the `params` box under Advanced.
+  3. **Placeholder section:** on/off toggle, kind, width and height, fill and stroke colour (editor-only data; the loader ignores it). Viewport draws it as a dashed marker with a small script badge, so scripted objects stay visible. A hint appears on scripted objects that have none.
+  4. **Tree cues:** a script icon on scripted rows in the Objects panel and an "Open script" action (Godot's attached-script cue).
+  5. **Validation:** wrong-typed params get a red border; keep the spec's `params` must-be-an-object rule; the Advanced hint says `scripts` and `params` now have their own controls.
+- [ ] **M** **Script-declared param schemas** (see Phase 8, *behaviours*): the Inspector builds typed controls from a schema the script exports.
 - [ ] **S** Align/distribute for multi-selection; show the Phaser key in the Objects panel and inspector.
 
 ### Phase 7: Prefab-lite (blocked)
@@ -175,7 +181,7 @@ PHASEFORM leaves prefabs and templates out of v0.1 ("may come later as a separat
 > No live mode. Your browser, running the game's own dev server, is the live view.
 - [ ] **S** **Run dev server** (existing) gains an **Open in browser** link, with `?scene=<key>`.
 - [ ] **S** **Old bridge cleanup:** if a project has `phaser-forge-bridge.js`, say so and list the lines to remove. The editor does not edit code.
-- [ ] **M** *Optional:* behaviours with inspector properties.
+- [ ] **M** *Optional:* behaviours with inspector properties. This is the script-declared param schema in Phase 6: a script exports e.g. `params = { seconds: { type: 'number', default: 5, min: 0.1 }, color: { type: 'color', default: '#ffcc33' } }`, and the Inspector shows scrub/colour/checkbox/select controls with defaults and reset arrows, and flags `params` keys the schema does not know (typos). The schema lives in the script, not in the PHASEFORM file, so the format is unchanged; the editor only reads the file and never edits code. Needs the convention agreed with the PHASEFORM side first (propose upstream, as for `interactive`).
 - [ ] **L** *Nice to have:* local MCP server so an AI can work with the open editor. Off by default, localhost only with a token, confined to the project folder. Build only if file watching plus the preview and context buttons prove too clumsy.
 
 ### Phase 9: Release

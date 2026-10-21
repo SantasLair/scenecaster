@@ -3,12 +3,14 @@ import SheetPreview from './SheetPreview';
 import Icon from './Icon';
 import type { PfAsset, PfObject } from '../../../shared/phaseform/types';
 import {
-  advancedKeys, degToRad, getAt, isHexColor, parseNumStr, pointCount, radToDeg, sectionsFor, setAt,
+  advancedKeys, degToRad, getAt, isHexColor, isScriptList, moveItem, parseNumStr, pointCount, radToDeg, sectionsFor, setAt,
   type FieldDef,
 } from './inspectorFields';
 
 interface Props {
   object: PfObject;
+  /** The opened project's folder, for listing script files; null when none is open. */
+  projectFolder: string | null;
   /** image/spritesheet/atlas keys from the project manifest. */
   textureKeys: string[];
   /** bitmapFont keys. */
@@ -215,6 +217,57 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
+// ---------------------------------------------------------------- scripts
+
+const iconBtn = 'flex-shrink-0 px-1 text-xs text-gray-500 hover:text-[var(--gd-accent)] disabled:opacity-30 disabled:hover:text-gray-500';
+
+/** The object's `scripts`, in run order: add from the project's script files, reorder, remove. Paths are project-relative. */
+function ScriptsSection({ scripts, projectFolder, onChange }: {
+  scripts: string[]; projectFolder: string | null; onChange: Props['onChange'];
+}) {
+  // null until the project's script files are listed; a path is only flagged missing once the list is known.
+  const [available, setAvailable] = useState<string[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    setAvailable(null);
+    if (projectFolder) window.electronAPI.listScripts(projectFolder).then(l => { if (live) setAvailable(l); }).catch(() => { /* unavailable */ });
+    return () => { live = false; };
+  }, [projectFolder]);
+
+  const apply = (next: string[]) => onChange({ scripts: next.length > 0 ? next : undefined }, true);
+  const addable = (available ?? []).filter(p => !scripts.includes(p));
+  return (
+    <Section title="Scripts">
+      <div className="text-[10px] text-gray-600 mb-1.5">Run in this order. Each may export <span className="font-mono">create</span> and <span className="font-mono">update</span>.</div>
+      {scripts.map((p, i) => {
+        const missing = available !== null && !available.includes(p);
+        return (
+          <div key={p + i} className="flex items-center gap-1 py-0.5">
+            <Icon name="Script" size={14} />
+            <span className={`flex-1 min-w-0 truncate text-xs font-mono ${missing ? 'text-red-300' : 'text-gray-300'}`}
+              title={missing ? `${p} (missing from the project)` : p}>{p}{missing && ' (missing)'}</span>
+            <button className={iconBtn} title="Move up" disabled={i === 0} onClick={() => apply(moveItem(scripts, i, i - 1))}>↑</button>
+            <button className={iconBtn} title="Move down" disabled={i === scripts.length - 1} onClick={() => apply(moveItem(scripts, i, i + 1))}>↓</button>
+            <button className={iconBtn} title="Show in file manager" disabled={missing || !projectFolder}
+              onClick={() => { if (projectFolder) void window.electronAPI.showItem(`${projectFolder}/${p}`); }}>
+              <Icon name="Folder" size={12} />
+            </button>
+            <button className={iconBtn} title="Remove this script" onClick={() => apply(scripts.filter((_, j) => j !== i))}>
+              <Icon name="GuiClose" size={12} />
+            </button>
+          </div>
+        );
+      })}
+      {scripts.length === 0 && <div className="text-xs text-gray-600 py-0.5">No scripts attached.</div>}
+      <select value="" disabled={!projectFolder || addable.length === 0} onChange={e => { if (e.target.value) apply([...scripts, e.target.value]); }}
+        className={`w-full mt-1 ${inputCls}`}>
+        <option value="">{available === null ? 'Loading scripts…' : addable.length === 0 ? 'No more script files in the project' : 'Add script…'}</option>
+        {addable.map(p => <option key={p} value={p}>{p}</option>)}
+      </select>
+    </Section>
+  );
+}
+
 // ---------------------------------------------------------------- one table field
 
 function Field({ def, obj, textureKeys, fontKeys, assets, onChange, onCommit }: {
@@ -341,7 +394,7 @@ function Field({ def, obj, textureKeys, fontKeys, assets, onChange, onCommit }: 
 
 // ---------------------------------------------------------------- inspector
 
-export default function Inspector({ object, textureKeys, fontKeys, assets, animationKeys, isTopLevel, onChange, onCommit, onDelete }: Props) {
+export default function Inspector({ object, projectFolder, textureKeys, fontKeys, assets, animationKeys, isTopLevel, onChange, onCommit, onDelete }: Props) {
   const sections = sectionsFor(object.type, isTopLevel);
   const advanced = advancedKeys(object, isTopLevel);
 
@@ -387,6 +440,10 @@ export default function Inspector({ object, textureKeys, fontKeys, assets, anima
           </Section>
         );
       })()}
+
+      {(object.scripts === undefined || isScriptList(object.scripts)) && (
+        <ScriptsSection scripts={object.scripts ?? []} projectFolder={projectFolder} onChange={onChange} />
+      )}
 
       {advanced.length > 0 && (
         <Section title="Advanced">

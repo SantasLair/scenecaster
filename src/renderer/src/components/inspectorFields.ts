@@ -158,10 +158,21 @@ export function coveredKeys(type: string, topLevel = true): Set<string> {
   return new Set([...ALWAYS_COVERED, ...fieldsFor(type, topLevel).map(d => d.path[0])]);
 }
 
+/** True for a well-formed `scripts` value (an array of strings): the Scripts section edits it; anything else stays raw JSON. */
+export const isScriptList = (v: unknown): v is string[] => Array.isArray(v) && v.every(s => typeof s === 'string');
+
+/** Moves the item at `from` to `to`; returns the same array when nothing would change. */
+export function moveItem<T>(list: readonly T[], from: number, to: number): T[] {
+  const out = [...list];
+  if (from === to || from < 0 || to < 0 || from >= out.length || to >= out.length) return out;
+  out.splice(to, 0, out.splice(from, 1)[0]);
+  return out;
+}
+
 /** Fields present on the object that the table does not cover for its type, in object order: edited as raw JSON. */
 export function advancedKeys(obj: PfObject, topLevel = true): string[] {
   const covered = coveredKeys(obj.type, topLevel);
-  return Object.keys(obj).filter(k => !covered.has(k));
+  return Object.keys(obj).filter(k => !covered.has(k) && !(k === 'scripts' && isScriptList(obj[k])));
 }
 
 export const radToDeg = (r: number) => Number(((r * 180) / Math.PI).toFixed(4));

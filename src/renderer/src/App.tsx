@@ -192,7 +192,7 @@ export default function App() {
     inspector: liveUrl ? <LiveInspector live={live} /> : !ui.canvasAvailable ? (
       <Empty text={ui.hasProject ? 'Select a scene to inspect its objects.' : 'Open a project to inspect objects.'} />
     ) : selectedObject ? (
-      <Inspector key={selectedObject.id} object={selectedObject} textureKeys={textureKeys} fontKeys={fontKeys} assets={scene.project?.assets ?? []} animationKeys={animationList(scene.project).map(a => a.key)}
+      <Inspector key={selectedObject.id} object={selectedObject} projectFolder={projectFolder} textureKeys={textureKeys} fontKeys={fontKeys} assets={scene.project?.assets ?? []} animationKeys={animationList(scene.project).map(a => a.key)}
         isTopLevel={findById(scene.scene, selectedObject.id)?.parent === null}
         onChange={updateField} onCommit={commitEdit} onDelete={() => deleteObject(selectedObject.id)} />
     ) : (

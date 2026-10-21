@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   readAssets: (folder: string) => ipcRenderer.invoke('fs:readAssets', folder),
   listDir: (dir: string) => ipcRenderer.invoke('fs:listDir', dir),
   findFiles: (dir: string, query: string) => ipcRenderer.invoke('fs:findFiles', dir, query),
+  listScripts: (folder: string) => ipcRenderer.invoke('fs:listScripts', folder),
   showItem: (path: string) => ipcRenderer.invoke('shell:showItem', path),
   fileToDataUrl: (path: string) => ipcRenderer.invoke('fs:fileToDataUrl', path),
   /** Watches the assets folder; pass an empty string to stop. Resolves false if there is nothing to watch. */

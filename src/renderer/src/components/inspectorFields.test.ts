@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PfObject } from '../../../shared/phaseform/types';
-import { advancedKeys, degToRad, fieldsFor, getAt, parseNumStr, radToDeg, setAt } from './inspectorFields';
+import { advancedKeys, degToRad, fieldsFor, getAt, moveItem, parseNumStr, radToDeg, setAt } from './inspectorFields';
 
 const keys = (type: string, top = true) => new Set(fieldsFor(type, top).map(d => d.path[0]));
 
@@ -62,6 +62,20 @@ describe('advancedKeys', () => {
     const o: PfObject = { id: 'a', type: 'image', key: 'k', depth: 3 };
     expect(advancedKeys(o, true)).toEqual([]);
     expect(advancedKeys(o, false)).toEqual(['depth']);
+  });
+});
+
+describe('scripts', () => {
+  it('keeps a well-formed scripts list out of Advanced, but a malformed one in', () => {
+    expect(advancedKeys({ id: 'a', type: 'graphics', scripts: ['a.js'] })).toEqual([]);
+    expect(advancedKeys({ id: 'a', type: 'graphics', scripts: 'a.js' })).toEqual(['scripts']);
+    expect(advancedKeys({ id: 'a', type: 'graphics', scripts: ['a.js', 3] })).toEqual(['scripts']);
+  });
+  it('moves items and ignores out-of-range moves', () => {
+    expect(moveItem(['a', 'b', 'c'], 0, 1)).toEqual(['b', 'a', 'c']);
+    expect(moveItem(['a', 'b', 'c'], 2, 0)).toEqual(['c', 'a', 'b']);
+    expect(moveItem(['a', 'b'], 0, 5)).toEqual(['a', 'b']);
+    expect(moveItem(['a', 'b'], -1, 0)).toEqual(['a', 'b']);
   });
 });
 
